@@ -4,7 +4,6 @@ import os
 import random
 from datetime import datetime, timedelta
 import pandas as pd
-import matplotlib.pyplot as plt
 
 DATA_FILE = "kelimeler.json"
 SCORE_FILE = "puan.json"
@@ -52,9 +51,6 @@ save_data()
 st.title("📘 Akademi - İngilizce Kelime Uygulaması")
 
 # Ana sayfa üstü
-if "🏠 Ana Sayfa" not in st.session_state:
-    st.session_state["🏠 Ana Sayfa"] = True
-
 st.sidebar.write(f"💰 Genel Puan: {score_data['score']}")
 
 # Menü
@@ -64,13 +60,15 @@ menu = st.sidebar.radio(
     key="main_menu"
 )
 
+# --- Ana Sayfa ---
 if menu == "🏠 Ana Sayfa":
     st.header("🏠 Ana Sayfa")
     st.subheader("📅 Tarih ve Saat")
     st.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     st.subheader(f"💰 Genel Puan: {score_data['score']}")
-    st.progress(min(max(score_data['score'],0),100)/100)  # 0-100 puan arası gösterim
+    st.progress(min(max(score_data['score'],0),100)/100)
 
+# --- Testler ---
 elif menu == "📝 Testler":
     st.header("📝 Testler")
     test_secim = st.radio(
@@ -139,6 +137,7 @@ elif menu == "📝 Testler":
         else:
             st.info("Yanlış kelime yok.")
 
+# --- İstatistikler ---
 elif menu == "📊 İstatistikler":
     st.header("📊 İstatistikler")
     secim = st.radio("Bir seçenek seçin:", ["Günlük İstatistik", "Genel İstatistik", "Yanlış Kelimeler"], key="istat_menu")
@@ -148,16 +147,9 @@ elif menu == "📊 İstatistikler":
         daily_df = pd.DataFrame.from_dict(score_data["daily"], orient="index")
         st.dataframe(daily_df)
 
-        # Günlük puan grafiği: yeşil artış, kırmızı düşüş
-        plt.figure(figsize=(8,4))
-        puanlar = daily_df["puan"].tolist()
-        colors = ["green" if i==0 or puanlar[i]>=puanlar[i-1] else "red" for i in range(len(puanlar))]
-        plt.bar(daily_df.index, puanlar, color=colors)
-        plt.title("Günlük Puan Grafiği")
-        plt.xlabel("Tarih")
-        plt.ylabel("Puan")
-        plt.grid(axis='y')
-        st.pyplot(plt)
+        # Günlük puan grafiği - Streamlit bar_chart
+        puanlar = daily_df["puan"]
+        st.bar_chart(puanlar)
 
     elif secim == "Genel İstatistik":
         st.subheader("📊 Genel İstatistik")
@@ -167,14 +159,9 @@ elif menu == "📊 İstatistikler":
         st.write(f"✅ Toplam Doğru: {total_dogru}")
         st.write(f"❌ Toplam Yanlış: {total_yanlis}")
 
-        daily_df = pd.DataFrame.from_dict(score_data["daily"], orient="index")
-        plt.figure(figsize=(8,4))
-        plt.plot(daily_df.index, daily_df["puan"].cumsum(), marker="o", color="green")
-        plt.title("Toplam Puan Grafiği")
-        plt.xlabel("Tarih")
-        plt.ylabel("Kümülatif Puan")
-        plt.grid(True)
-        st.pyplot(plt)
+        # Toplam puan grafiği - Streamlit line_chart
+        daily_cumsum = daily_df["puan"].cumsum()
+        st.line_chart(daily_cumsum)
 
     elif secim == "Yanlış Kelimeler":
         st.subheader("❌ Yanlış Kelimeler")
@@ -186,6 +173,7 @@ elif menu == "📊 İstatistikler":
         else:
             st.info("Yanlış kelime yok.")
 
+# --- Kelime Ekle ---
 elif menu == "➕ Kelime Ekle":
     st.header("➕ Kelime Ekle")
     kelime_secim = st.radio(
