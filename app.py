@@ -64,7 +64,6 @@ if score_data.get("last_check_date") != today_str:
             penalty = -20
             score_data["score"] += penalty
             score_data["daily"][yesterday]["puan"] += penalty
-            st.warning(f"⚠️ Dün 10 kelime eklemedin! -20 puan cezası uygulandı.")
 
     score_data["last_check_date"] = today_str
 
@@ -114,23 +113,24 @@ elif menu == "📝 Testler":
         key="test_menu"
     )
 
-    # ✅ Yeni Test mantığı düzeltildi
+    # ✅ Yeni Test - DÜZELTİLDİ
     if test_secim == "Yeni Test":
         st.subheader("Yeni Test")
         if kelimeler:
-            # Session state başlatma
+            # Session state başlatma - TÜM DEĞİŞKENLER EKLENDİ
             if "soru" not in st.session_state:
                 st.session_state.soru = random.choice(kelimeler)
                 st.session_state.secenekler = None
                 st.session_state.cevaplandi = False
                 st.session_state.cevap_gosteriliyor = False
+                st.session_state.son_cevap_dogru = False  # ✅ BU SATIR EKLENDİ
 
             # Eğer seçenekler henüz oluşturulmadıysa oluştur
             if st.session_state.secenekler is None:
                 soru = st.session_state.soru
                 dogru = soru["tr"]
                 yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
-                secenekler = random.sample(yanlislar, min(3, len(yanlisler)))
+                secenekler = random.sample(yanlislar, min(3, len(yanlislar)))
                 secenekler.append(dogru)
                 random.shuffle(secenekler)
                 st.session_state.secenekler = secenekler
@@ -183,17 +183,19 @@ elif menu == "📝 Testler":
         st.subheader("Yanlış Kelimeler Testi")
         yanlis_kelimeler = [k for k in kelimeler if k.get("wrong_count", 0) > 0]
         if yanlis_kelimeler:
+            # Session state başlatma - TÜM DEĞİŞKENLER EKLENDİ
             if "yanlis_soru" not in st.session_state:
                 st.session_state.yanlis_soru = random.choice(yanlis_kelimeler)
                 st.session_state.yanlis_secenekler = None
                 st.session_state.yanlis_cevaplandi = False
                 st.session_state.yanlis_cevap_gosteriliyor = False
+                st.session_state.yanlis_son_cevap_dogru = False  # ✅ BU SATIR EKLENDİ
 
             if st.session_state.yanlis_secenekler is None:
                 soru = st.session_state.yanlis_soru
                 dogru = soru["tr"]
                 yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
-                secenekler = random.sample(yanlislar, min(3, len(yanlisler)))
+                secenekler = random.sample(yanlislar, min(3, len(yanlislar)))
                 secenekler.append(dogru)
                 random.shuffle(secenekler)
                 st.session_state.yanlis_secenekler = secenekler
@@ -236,7 +238,7 @@ elif menu == "📝 Testler":
         else:
             st.info("Yanlış kelime yok.")
 
-    # ✅ TEKRAR TEST KISMI DÜZELTİLDİ - elif yerine if kullanıldı
+    # ✅ Tekrar Test
     elif test_secim == "Tekrar Test":
         st.subheader("Tekrar Test")
         if kelimeler:
@@ -298,12 +300,8 @@ elif menu == "📝 Testler":
 
                     if secim == dogru:
                         st.session_state.tekrar_son_cevap_dogru = True
-                        # Tekrar testinde puan verme isteğe bağlı
-                        # score_data["score"] += 1
                     else:
                         st.session_state.tekrar_son_cevap_dogru = False
-                        # Tekrar testinde puan kesme isteğe bağlı
-                        # score_data["score"] -= 1
 
                     save_data()
                     st.rerun()
@@ -362,14 +360,12 @@ elif menu == "➕ Kelime Ekle":
                 else:
                     kelimeler.append({"en": ing.strip(), "tr": tr.strip(), "wrong_count": 0})
                     score_data["daily"][today_str]["yeni_kelime"] += 1
-                    score_data["score"] += 1  # ✅ her eklenen kelime +1 puan
-                    score_data["daily"][today_str]["puan"] += 1  # Günlük puana da ekle
+                    score_data["score"] += 1
+                    score_data["daily"][today_str]["puan"] += 1
 
-                    # Veriyi kaydet
                     save_data()
                     st.success(f"✅ Kelime kaydedildi: {ing} → {tr}")
-                    # Input alanlarını temizle
-                    time.sleep(0.5)  # Kısa bekleme
+                    time.sleep(0.5)
                     st.rerun()
             else:
                 st.warning("⚠️ İngilizce ve Türkçe kelimeyi doldurun.")
