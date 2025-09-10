@@ -5,9 +5,23 @@ import random
 import time
 from datetime import datetime, timedelta
 import pandas as pd
+import requests
 
 DATA_FILE = "kelimeler.json"
 SCORE_FILE = "puan.json"
+
+
+# İnternet saati alma fonksiyonu
+def get_internet_time():
+    try:
+        response = requests.get("http://worldtimeapi.org/api/timezone/Europe/Istanbul", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return datetime.fromisoformat(data['datetime'].replace('Z', '+00:00')).replace(tzinfo=None)
+    except:
+        pass
+    return datetime.now()  # İnternet bağlantısı yoksa sistem saatini kullan
+
 
 # Kelime dosyası
 if os.path.exists(DATA_FILE):
@@ -21,7 +35,8 @@ if os.path.exists(SCORE_FILE):
     with open(SCORE_FILE, "r", encoding="utf-8") as f:
         score_data = json.load(f)
 else:
-    score_data = {"score": 0, "daily": {}}
+    score_data = {"score": 0, "daily": {}, "last_check_date": None}
+
 
 def save_data():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -29,20 +44,31 @@ def save_data():
     with open(SCORE_FILE, "w", encoding="utf-8") as f:
         json.dump(score_data, f, ensure_ascii=False, indent=2)
 
-today = datetime.today()
+
+# İnternet saatini al
+current_time = get_internet_time()
+today = current_time.date()
 today_str = today.strftime("%Y-%m-%d")
 
 # Günlük veri kontrolü
 if "daily" not in score_data:
     score_data["daily"] = {}
 
-# Önceki günün kelime ceza kontrolü
-yesterday = (today - timedelta(days=1)).strftime("%Y-%m-%d")
-if yesterday in score_data["daily"]:
-    if score_data["daily"][yesterday]["yeni_kelime"] < 10:
-        score_data["score"] -= 20
-        score_data["daily"][yesterday]["puan"] -= 20
+# Gece yarısı kontrolü ve önceki günün kelime ceza kontrolü
+if score_data.get("last_check_date") != today_str:
+    yesterday = (today - timedelta(days=1)).strftime("%Y-%m-%d")
 
+    # Önceki günün kelime kontrolü
+    if yesterday in score_data["daily"]:
+        if score_data["daily"][yesterday]["yeni_kelime"] < 10:
+            penalty = -20
+            score_data["score"] += penalty
+            score_data["daily"][yesterday]["puan"] += penalty
+            st.warning(f"⚠️ Dün 10 kelime eklemedin! -20 puan cezası uygulandı.")
+
+    score_data["last_check_date"] = today_str
+
+# Bugünün verisini oluştur
 if today_str not in score_data["daily"]:
     score_data["daily"][today_str] = {"puan": 0, "yeni_kelime": 0, "dogru": 0, "yanlis": 0}
 
@@ -50,7 +76,7 @@ if today_str not in score_data["daily"]:
 for k in kelimeler:
     if "last_wrong_date" in k and k.get("wrong_count", 0) > 0:
         last_wrong = datetime.strptime(k["last_wrong_date"], "%Y-%m-%d")
-        weeks_passed = (today - last_wrong).days // 7
+        weeks_passed = (today - last_wrong.date()).days // 7
         if weeks_passed >= 1:
             score_data["score"] -= 2 * weeks_passed
             k["last_wrong_date"] = today.strftime("%Y-%m-%d")
@@ -59,6 +85,10 @@ save_data()
 
 st.title("📘 Akademi - İngilizce Kelime Uygulaması")
 st.sidebar.write(f"💰 Genel Puan: {score_data['score']}")
+
+# Güncel saat gösterimi (internet saati)
+st.sidebar.write(f"🕐 Güncel Saat: {current_time.strftime('%H:%M:%S')}")
+st.sidebar.write(f"📅 Tarih: {today_str}")
 
 # Menü
 menu = st.sidebar.radio(
@@ -70,8 +100,8 @@ menu = st.sidebar.radio(
 # --- Ana Sayfa ---
 if menu == "🏠 Ana Sayfa":
     st.header("🏠 Ana Sayfa")
-    st.subheader("📅 Tarih ve Saat")
-    st.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    st.subheader("📅 Tarih ve Saat (İnternet Saati)")
+    st.write(current_time.strftime("%Y-%m-%d %H:%M:%S"))
     st.subheader(f"💰 Genel Puan: {score_data['score']}")
     st.progress(min(max(score_data['score'], 0), 100) / 100)
 
@@ -84,44 +114,68 @@ elif menu == "📝 Testler":
         key="test_menu"
     )
 
-    # ✅ Yeni Test mantığı güncellendi
+    # ✅ Yeni Test mantığı düzeltildi
     if test_secim == "Yeni Test":
         st.subheader("Yeni Test")
         if kelimeler:
+            # Session state başlatma
             if "soru" not in st.session_state:
                 st.session_state.soru = random.choice(kelimeler)
+                st.session_state.secenekler = None
                 st.session_state.cevaplandi = False
+                st.session_state.cevap_gosteriliyor = False
+
+            # Eğer seçenekler henüz oluşturulmadıysa oluştur
+            if st.session_state.secenekler is None:
+                soru = st.session_state.soru
+                dogru = soru["tr"]
+                yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
+                secenekler = random.sample(yanlislar, min(3, len(yanlisler)))
+                secenekler.append(dogru)
+                random.shuffle(secenekler)
+                st.session_state.secenekler = secenekler
 
             soru = st.session_state.soru
             dogru = soru["tr"]
 
-            yanlisler = [k["tr"] for k in kelimeler if k["tr"] != dogru]
-            secenekler = random.sample(yanlisler, min(3, len(yanlisler)))
-            secenekler.append(dogru)
-            random.shuffle(secenekler)
-
-            secim = st.radio(f"{soru['en']} ne demek?", secenekler, key="secenek_radio")
-
-            if st.button("Cevapla") and not st.session_state.cevaplandi:
-                if secim == dogru:
+            # Cevap gösteriliyorsa, sadece sonucu göster ve bekle
+            if st.session_state.cevap_gosteriliyor:
+                if st.session_state.son_cevap_dogru:
                     st.success("✅ Doğru!")
-                    score_data["score"] += 1
-                    score_data["daily"][today_str]["puan"] += 1
-                    score_data["daily"][today_str]["dogru"] += 1
                 else:
                     st.error(f"❌ Yanlış! Doğru cevap: {dogru}")
-                    score_data["score"] -= 2
-                    score_data["daily"][today_str]["puan"] -= 2
-                    score_data["daily"][today_str]["yanlis"] += 1
-                    soru["wrong_count"] = soru.get("wrong_count", 0) + 1
-                    soru["last_wrong_date"] = today_str
 
-                st.session_state.cevaplandi = True
-                save_data()
+                # 3 saniye bekle ve yeni soruya geç
                 time.sleep(3)
                 st.session_state.soru = random.choice(kelimeler)
+                st.session_state.secenekler = None
                 st.session_state.cevaplandi = False
+                st.session_state.cevap_gosteriliyor = False
                 st.rerun()
+            else:
+                # Normal soru gösterimi
+                secim = st.radio(f"{soru['en']} ne demek?", st.session_state.secenekler,
+                                 key=f"secenek_radio_{id(soru)}")
+
+                if st.button("Cevapla", key="cevapla_btn") and not st.session_state.cevaplandi:
+                    st.session_state.cevaplandi = True
+                    st.session_state.cevap_gosteriliyor = True
+
+                    if secim == dogru:
+                        st.session_state.son_cevap_dogru = True
+                        score_data["score"] += 1
+                        score_data["daily"][today_str]["puan"] += 1
+                        score_data["daily"][today_str]["dogru"] += 1
+                    else:
+                        st.session_state.son_cevap_dogru = False
+                        score_data["score"] -= 2
+                        score_data["daily"][today_str]["puan"] -= 2
+                        score_data["daily"][today_str]["yanlis"] += 1
+                        soru["wrong_count"] = soru.get("wrong_count", 0) + 1
+                        soru["last_wrong_date"] = today_str
+
+                    save_data()
+                    st.rerun()
         else:
             st.info("Henüz kelime yok. Lütfen önce kelime ekleyin.")
 
@@ -129,32 +183,64 @@ elif menu == "📝 Testler":
         st.subheader("Yanlış Kelimeler Testi")
         yanlis_kelimeler = [k for k in kelimeler if k.get("wrong_count", 0) > 0]
         if yanlis_kelimeler:
-            soru = random.choice(yanlis_kelimeler)
-            dogru = soru["tr"]
-            yanlisler = [k["tr"] for k in kelimeler if k["tr"] != dogru]
-            secenekler = random.sample(yanlisler, min(3, len(yanlisler)))
-            secenekler.append(dogru)
-            random.shuffle(secenekler)
+            if "yanlis_soru" not in st.session_state:
+                st.session_state.yanlis_soru = random.choice(yanlis_kelimeler)
+                st.session_state.yanlis_secenekler = None
+                st.session_state.yanlis_cevaplandi = False
+                st.session_state.yanlis_cevap_gosteriliyor = False
 
-            secim = st.radio(f"{soru['en']} ne demek?", secenekler, key="yanlis_radio")
-            if st.button("Cevapla Yanlış Test", key="yanlis_btn"):
-                if secim == dogru:
+            if st.session_state.yanlis_secenekler is None:
+                soru = st.session_state.yanlis_soru
+                dogru = soru["tr"]
+                yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
+                secenekler = random.sample(yanlislar, min(3, len(yanlisler)))
+                secenekler.append(dogru)
+                random.shuffle(secenekler)
+                st.session_state.yanlis_secenekler = secenekler
+
+            soru = st.session_state.yanlis_soru
+            dogru = soru["tr"]
+
+            if st.session_state.yanlis_cevap_gosteriliyor:
+                if st.session_state.yanlis_son_cevap_dogru:
                     st.success("✅ Doğru!")
-                    soru["wrong_count"] -= 1
-                    if soru["wrong_count"] <= 0:
-                        if "last_wrong_date" in soru:
-                            del soru["last_wrong_date"]
-                        soru["wrong_count"] = 0
                 else:
                     st.error(f"❌ Yanlış! Doğru cevap: {dogru}")
-                save_data()
+
+                time.sleep(3)
+                st.session_state.yanlis_soru = random.choice(yanlis_kelimeler)
+                st.session_state.yanlis_secenekler = None
+                st.session_state.yanlis_cevaplandi = False
+                st.session_state.yanlis_cevap_gosteriliyor = False
+                st.rerun()
+            else:
+                secim = st.radio(f"{soru['en']} ne demek?", st.session_state.yanlis_secenekler,
+                                 key=f"yanlis_radio_{id(soru)}")
+
+                if st.button("Cevapla", key="yanlis_cevapla_btn") and not st.session_state.yanlis_cevaplandi:
+                    st.session_state.yanlis_cevaplandi = True
+                    st.session_state.yanlis_cevap_gosteriliyor = True
+
+                    if secim == dogru:
+                        st.session_state.yanlis_son_cevap_dogru = True
+                        soru["wrong_count"] -= 1
+                        if soru["wrong_count"] <= 0:
+                            if "last_wrong_date" in soru:
+                                del soru["last_wrong_date"]
+                            soru["wrong_count"] = 0
+                    else:
+                        st.session_state.yanlis_son_cevap_dogru = False
+
+                    save_data()
+                    st.rerun()
         else:
             st.info("Yanlış kelime yok.")
 
 # --- İstatistikler ---
 elif menu == "📊 İstatistikler":
     st.header("📊 İstatistikler")
-    secim = st.radio("Bir seçenek seçin:", ["Günlük İstatistik", "Genel İstatistik", "Yanlış Kelimeler"], key="istat_menu")
+    secim = st.radio("Bir seçenek seçin:", ["Günlük İstatistik", "Genel İstatistik", "Yanlış Kelimeler"],
+                     key="istat_menu")
 
     if secim == "Günlük İstatistik":
         st.subheader("📅 Günlük İstatistik")
@@ -178,7 +264,9 @@ elif menu == "📊 İstatistikler":
         if yanlis_kelimeler:
             for k in yanlis_kelimeler:
                 color = "red" if k.get("wrong_count", 0) >= 3 else "orange" if k.get("wrong_count", 0) == 2 else "black"
-                st.markdown(f"<span style='color:{color}'>{k['en']} → {k['tr']} | Yanlış sayısı: {k.get('wrong_count',0)} | Son yanlış: {k.get('last_wrong_date','-')}</span>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<span style='color:{color}'>{k['en']} → {k['tr']} | Yanlış sayısı: {k.get('wrong_count', 0)} | Son yanlış: {k.get('last_wrong_date', '-')}</span>",
+                    unsafe_allow_html=True)
         else:
             st.info("Yanlış kelime yok.")
 
@@ -196,15 +284,26 @@ elif menu == "➕ Kelime Ekle":
                 kelimeler.append({"en": ing.strip(), "tr": tr.strip(), "wrong_count": 0})
                 score_data["daily"][today_str]["yeni_kelime"] += 1
                 score_data["score"] += 1  # ✅ her eklenen kelime +1 puan
+                score_data["daily"][today_str]["puan"] += 1  # Günlük puana da ekle
                 save_data()
                 st.success(f"Kelime kaydedildi: {ing} → {tr}")
+                # Input alanlarını temizle
+                st.session_state.ing_input = ""
+                st.session_state.tr_input = ""
+                st.rerun()
             else:
                 st.warning("İngilizce ve Türkçe kelimeyi doldurun.")
 
     elif kelime_secim == "Kelime Listesi":
         st.subheader("Kelime Listesi")
         if kelimeler:
-            for k in kelimeler:
-                st.write(f"{k['en']} → {k['tr']} (Yanlış sayısı: {k.get('wrong_count',0)})")
+            for i, k in enumerate(kelimeler):
+                st.write(f"{i + 1}. {k['en']} → {k['tr']} (Yanlış sayısı: {k.get('wrong_count', 0)})")
         else:
             st.info("Henüz eklenmiş kelime yok.")
+
+# Bugünün kelime eklenme durumunu göster
+bugun_kelime = score_data["daily"][today_str]["yeni_kelime"]
+st.sidebar.write(f"📚 Bugün eklenen kelime: {bugun_kelime}/10")
+if bugun_kelime < 10:
+    st.sidebar.warning(f"⚠️ Daha {10 - bugun_kelime} kelime eklemelisin!")
