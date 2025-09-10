@@ -281,18 +281,26 @@ elif menu == "➕ Kelime Ekle":
         tr = st.text_input("Türkçe Karşılığı", key="tr_input")
         if st.button("Kaydet", key="save_btn"):
             if ing.strip() != "" and tr.strip() != "":
-                kelimeler.append({"en": ing.strip(), "tr": tr.strip(), "wrong_count": 0})
-                score_data["daily"][today_str]["yeni_kelime"] += 1
-                score_data["score"] += 1  # ✅ her eklenen kelime +1 puan
-                score_data["daily"][today_str]["puan"] += 1  # Günlük puana da ekle
-                save_data()
-                st.success(f"Kelime kaydedildi: {ing} → {tr}")
-                # Input alanlarını temizle
-                st.session_state.ing_input = ""
-                st.session_state.tr_input = ""
-                st.rerun()
+                # Aynı kelime var mı kontrol et
+                existing_word = any(k["en"].lower() == ing.strip().lower() for k in kelimeler)
+                if existing_word:
+                    st.warning("⚠️ Bu kelime zaten mevcut!")
+                else:
+                    kelimeler.append({"en": ing.strip(), "tr": tr.strip(), "wrong_count": 0})
+                    score_data["daily"][today_str]["yeni_kelime"] += 1
+                    score_data["score"] += 1  # ✅ her eklenen kelime +1 puan
+                    score_data["daily"][today_str]["puan"] += 1  # Günlük puana da ekle
+
+                    # Veriyi kaydet
+                    if save_data():
+                        st.success(f"✅ Kelime kaydedildi: {ing} → {tr}")
+                        # Input alanlarını temizle
+                        time.sleep(0.5)  # Kısa bekleme
+                        st.rerun()
+                    else:
+                        st.error("❌ Kelime kaydedilirken hata oluştu!")
             else:
-                st.warning("İngilizce ve Türkçe kelimeyi doldurun.")
+                st.warning("⚠️ İngilizce ve Türkçe kelimeyi doldurun.")
 
     elif kelime_secim == "Kelime Listesi":
         st.subheader("Kelime Listesi")
