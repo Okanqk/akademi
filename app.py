@@ -406,19 +406,23 @@ elif menu == "📝 Testler":
                 safe_save_data()
                 st.rerun()
 
-        # Sonuç mesajı
+        # Sonuç mesajı göster
         if st.session_state[f"{test_key}_cevap_verildi"]:
             if "✅" in st.session_state[f"{test_key}_sonuc_mesaji"]:
                 st.success(st.session_state[f"{test_key}_sonuc_mesaji"])
             else:
                 st.error(st.session_state[f"{test_key}_sonuc_mesaji"])
 
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🔄 Sonraki Soru", key=f"{test_key}_sonraki"):
-                    st.session_state[f"{test_key}_cevap_verildi"] = False
-                    st.session_state[f"{test_key}_sonuc_mesaji"] = ""
-                    st.rerun()
+            # Sonraki soru butonu
+            if st.button("🔄 Sonraki Soru", key=f"{test_key}_sonraki", use_container_width=True, type="secondary"):
+                # Session state'i temizle
+                st.session_state[f"{test_key}_cevap_verildi"] = False
+                st.session_state[f"{test_key}_sonuc_mesaji"] = ""
+                st.session_state[f"{test_key}_selected_answer"] = None
+                # Radio button session state'ini de temizle
+                if f"{test_key}_radio" in st.session_state:
+                    del st.session_state[f"{test_key}_radio"]
+                st.rerun()
 
             # Kelime düzenleme bölümü
             with st.expander("✏️ Kelimeyi Düzenle / Sil"):
@@ -442,6 +446,12 @@ elif menu == "📝 Testler":
                         kelimeler.remove(soru)
                         safe_save_data()
                         st.warning("🗑️ Kelime silindi!")
+                        # Silme işleminden sonra session state'i temizle
+                        st.session_state[f"{test_key}_cevap_verildi"] = False
+                        st.session_state[f"{test_key}_sonuc_mesaji"] = ""
+                        st.session_state[f"{test_key}_selected_answer"] = None
+                        if f"{test_key}_radio" in st.session_state:
+                            del st.session_state[f"{test_key}_radio"]
                         st.rerun()
 
 
