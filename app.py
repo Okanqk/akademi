@@ -839,6 +839,56 @@ elif menu == "🔧 Ayarlar":
         st.subheader("⚠️ Tehlikeli İşlemler")
         st.warning("Bu işlemler geri alınamaz!")
 
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.write("**📥 Veri İçe Aktarma:**")
+            uploaded_kelimeler = st.file_uploader("Kelimeler JSON", type=['json'], key="upload_kelimeler")
+            uploaded_puan = st.file_uploader("Puan JSON", type=['json'], key="upload_puan")
+
+            if st.button("📥 İçe Aktar", type="primary"):
+                try:
+                    if uploaded_kelimeler:
+                        kelimeler_data = json.loads(uploaded_kelimeler.read())
+                        kelimeler.clear()
+                        kelimeler.extend(kelimeler_data)
+                        st.success("✅ Kelimeler içe aktarıldı!")
+
+                    if uploaded_puan:
+                        puan_data = json.loads(uploaded_puan.read())
+                        score_data.update(puan_data)
+                        st.success("✅ Puan verileri içe aktarıldı!")
+
+                    if uploaded_kelimeler or uploaded_puan:
+                        safe_save_data()
+                        st.rerun()
+
+                except Exception as e:
+                    st.error(f"❌ İçe aktarma hatası: {e}")
+
+        with col2:
+            st.write("**📤 Veri Dışa Aktarma:**")
+
+            if st.button("📤 Kelimeleri İndir", use_container_width=True):
+                kelimeler_json = json.dumps(kelimeler, ensure_ascii=False, indent=2)
+                st.download_button(
+                    "⬇️ kelimeler.json İndir",
+                    kelimeler_json,
+                    "kelimeler_backup.json",
+                    "application/json"
+                )
+
+            if st.button("📤 Puanları İndir", use_container_width=True):
+                puan_json = json.dumps(score_data, ensure_ascii=False, indent=2)
+                st.download_button(
+                    "⬇️ puan.json İndir",
+                    puan_json,
+                    "puan_backup.json",
+                    "application/json"
+                )
+
+        st.divider()
+
         if st.button("🗑️ Tüm Verileri Sıfırla", type="secondary"):
             if st.button("⚠️ EMİNİM, SİL!", key="confirm_reset"):
                 kelimeler.clear()
