@@ -1,0 +1,129 @@
+[
+  {
+    "en": "demand",
+    "tr": "talep",
+    "wrong_count": 0
+  }
+
+][
+  {
+    "en": "abundance",
+    "tr": "bolluk",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "acquire",
+    "tr": "edinmek",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "ad",
+    "tr": "reklam",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "affluence",
+    "tr": "zenginlik",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "alliance",
+    "tr": "ortaklık",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "allocate",
+    "tr": "tahsis etmek",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "allowance",
+    "tr": "ödenek",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "alter",
+    "tr": "değiştirmek",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "alteration",
+    "tr": "değişim",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "amount",
+    "tr": "miktar",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "ampleness",
+    "tr": "çokluk",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "annual",
+    "tr": "yıllık",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "assemble",
+    "tr": "toplamak",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "assembly",
+    "tr": "birlik meclis",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "assest",
+    "tr": "mal",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "assign",
+    "tr": "görevlendirmek",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "association",
+    "tr": "ortaklık",
+    "wrong_count": 1,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "assurance",
+    "tr": "teminat",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "auction",
+    "tr": "açık artırma",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  },
+  {
+    "en": "back up",
+    "tr": "desteklemek",
+    "wrong_count": 0,
+    "added_date": "2025-09-11"
+  }
+]
