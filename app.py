@@ -74,17 +74,33 @@ def safe_save_data():
         return False
 
 
+def initialize_default_data():
+    """Varsayılan veri yapısı oluştur"""
+    default_kelimeler = [
+        {"en": "abundance", "tr": "bolluk", "wrong_count": 0, "added_date": "2025-01-15"},
+        {"en": "acquire", "tr": "edinmek", "wrong_count": 0, "added_date": "2025-01-15"},
+        {"en": "ad", "tr": "reklam", "wrong_count": 0, "added_date": "2025-01-15"},
+        {"en": "affluence", "tr": "zenginlik", "wrong_count": 0, "added_date": "2025-01-15"},
+        {"en": "alliance", "tr": "ortaklık", "wrong_count": 0, "added_date": "2025-01-15"},
+    ]
+
+    default_score_data = {
+        "score": 25, "daily": {
+            "2025-01-15": {"puan": 5, "yeni_kelime": 5, "dogru": 0, "yanlis": 0}
+        },
+        "last_check_date": "2025-01-15", "answered_today": 0,
+        "correct_streak": 0, "wrong_streak": 0, "combo_multiplier": 1.0
+    }
+
+    return default_kelimeler, default_score_data
+
+
 def safe_load_data():
-    """Verileri güvenli bir şekilde yükle"""
+    """Verileri güvenli bir şekilde yükle - Acil durum koruması ile"""
     kelimeler = []
     score_data = {
-        "score": 0,
-        "daily": {},
-        "last_check_date": None,
-        "answered_today": 0,
-        "correct_streak": 0,
-        "wrong_streak": 0,
-        "combo_multiplier": 1.0
+        "score": 0, "daily": {}, "last_check_date": None, "answered_today": 0,
+        "correct_streak": 0, "wrong_streak": 0, "combo_multiplier": 1.0
     }
 
     # Ana dosyaları yüklemeyi dene
@@ -92,31 +108,55 @@ def safe_load_data():
         if os.path.exists(DATA_FILE):
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 kelimeler = json.load(f)
+                if not kelimeler:  # Boş dosya kontrolü
+                    st.warning("⚠️ Kelimeler dosyası boş, varsayılan veriler yükleniyor...")
+                    kelimeler, _ = initialize_default_data()
+        else:
+            st.info("📝 İlk kez açılıyor, varsayılan veriler yükleniyor...")
+            kelimeler, _ = initialize_default_data()
+
         if os.path.exists(SCORE_FILE):
             with open(SCORE_FILE, "r", encoding="utf-8") as f:
                 loaded_score = json.load(f)
-                # Yeni alanları ekle
                 for key in score_data.keys():
                     if key in loaded_score:
                         score_data[key] = loaded_score[key]
+        else:
+            _, score_data = initialize_default_data()
+
     except Exception as e:
         st.error(f"Ana dosyalar yüklenirken hata: {e}")
+
         # Backup'tan yüklemeyi dene
         try:
             if os.path.exists(BACKUP_DATA_FILE):
                 with open(BACKUP_DATA_FILE, "r", encoding="utf-8") as f:
                     kelimeler = json.load(f)
-                st.warning("Kelimeler backup'tan yüklendi.")
+                st.success("✅ Kelimeler backup'tan yüklendi!")
+            else:
+                # Son çare: Varsayılan veriler
+                kelimeler, score_data = initialize_default_data()
+                st.info("🔄 Varsayılan veriler yüklendi.")
+
             if os.path.exists(BACKUP_SCORE_FILE):
                 with open(BACKUP_SCORE_FILE, "r", encoding="utf-8") as f:
                     loaded_score = json.load(f)
                     for key in score_data.keys():
                         if key in loaded_score:
                             score_data[key] = loaded_score[key]
-                st.warning("Puan verileri backup'tan yüklendi.")
+                st.success("✅ Puan verileri backup'tan yüklendi!")
+
         except Exception as backup_error:
             st.error(f"Backup'tan yükleme de başarısız: {backup_error}")
-            kelimeler = []
+            # En son çare: Tamamen yeni başlangıç
+            kelimeler, score_data = initialize_default_data()
+            st.warning("🆕 Yeni başlangıç verileri oluşturuldu.")
+
+    # Veri doğrulama
+    if not isinstance(kelimeler, list):
+        kelimeler = []
+    if not isinstance(score_data, dict):
+        score_data = initialize_default_data()[1]
 
     return kelimeler, score_data
 
@@ -960,4 +1000,5 @@ with st.sidebar:
 # Otomatik kaydetme (her 10 saniyede bir)
 if st.session_state.get('last_save_time', 0) + 10 < current_time.timestamp():
     safe_save_data()
+    st.session_state['last_save_time'] = current_time.timestamp()
     st.session_state['last_save_time'] = current_time.timestamp()
