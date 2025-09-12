@@ -229,6 +229,56 @@ def check_daily_word_penalty():
     return 0
 
 
+def generate_question(test_type):
+    """Test türüne göre soru üret ve session state'e kaydet"""
+    if test_type == "en_tr":
+        soru = random.choice(kelimeler)
+        dogru = soru["tr"]
+        yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
+        secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
+        random.shuffle(secenekler)
+        question_text = f"🇺🇸 **{soru['en']}** ne demek?"
+
+    elif test_type == "tr_en":
+        soru = random.choice(kelimeler)
+        dogru = soru["en"]
+        yanlislar = [k["en"] for k in kelimeler if k["en"] != dogru]
+        secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
+        random.shuffle(secenekler)
+        question_text = f"🇹🇷 **{soru['tr']}** kelimesinin İngilizcesi nedir?"
+
+    elif test_type == "yanlis":
+        yanlis_kelimeler = [k for k in kelimeler if k.get("wrong_count", 0) > 0]
+        if not yanlis_kelimeler:
+            return None, None, None, None
+        soru = random.choice(yanlis_kelimeler)
+        dogru = soru["tr"]
+        yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
+        secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
+        random.shuffle(secenekler)
+        question_text = f"🇺🇸 **{soru['en']}** ne demek?"
+
+    elif test_type == "tekrar":
+        soru = random.choice(kelimeler)
+        # Rastgele yön seçimi
+        if random.choice([True, False]):
+            # EN → TR
+            dogru = soru["tr"]
+            yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
+            secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
+            random.shuffle(secenekler)
+            question_text = f"🇺🇸 **{soru['en']}** ne demek?"
+        else:
+            # TR → EN
+            dogru = soru["en"]
+            yanlislar = [k["en"] for k in kelimeler if k["en"] != dogru]
+            secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
+            random.shuffle(secenekler)
+            question_text = f"🇹🇷 **{soru['tr']}** kelimesinin İngilizcesi nedir?"
+
+    return soru, dogru, secenekler, question_text
+
+
 # -------------------- Veriler --------------------
 
 kelimeler, score_data = safe_load_data()
@@ -364,68 +414,74 @@ elif menu == "📝 Testler":
         st.warning("⚠️ Test çözebilmek için en az 4 kelime olmalı!")
         st.stop()
 
-    test_secim = st.radio(
-        "Bir test türü seçin:",
-        ["🆕 Yeni Test (EN→TR)", "🇹🇷 Türkçe Test (TR→EN)", "❌ Yanlış Kelimeler", "🔄 Genel Tekrar"],
-        key="test_menu"
-    )
+    # Test türü seçimi - Sadece ilk kez seçildiğinde çalışır
+    if "selected_test_type" not in st.session_state:
+        st.session_state.selected_test_type = None
 
+    # Test türü butonları
+    col1, col2, col3, col4 = st.columns(4)
 
-    def process_answer(is_correct, soru, dogru, test_type):
-        """Cevabı işle ve puanları güncelle"""
-        score_data["answered_today"] += 1
+    with col1:
+        if st.button("🆕 Yeni Test (EN→TR)", use_container_width=True,
+                     type="primary" if st.session_state.selected_test_type == "en_tr" else "secondary"):
+            st.session_state.selected_test_type = "en_tr"
+            st.session_state.current_question = None  # Yeni soru için sıfırla
 
-        # Temel puan hesaplama
-        word_points = calculate_word_points(soru, is_correct)
+    with col2:
+        if st.button("🇹🇷 Türkçe Test (TR→EN)", use_container_width=True,
+                     type="primary" if st.session_state.selected_test_type == "tr_en" else "secondary"):
+            st.session_state.selected_test_type = "tr_en"
+            st.session_state.current_question = None
 
-        # Combo sistemini güncelle
-        combo_penalty = update_combo_system(is_correct)
+    with col3:
+        if st.button("❌ Yanlış Kelimeler", use_container_width=True,
+                     type="primary" if st.session_state.selected_test_type == "yanlis" else "secondary"):
+            st.session_state.selected_test_type = "yanlis"
+            st.session_state.current_question = None
 
-        # İlk 40 soruda sadekce eksi puan (Yeni Test ve Türkçe Test için)
-        if test_type in ["yeni_test", "turkce_test"] and score_data["answered_today"] <= 40:
-            if is_correct:
-                final_points = 0  # İlk 40 soruda artı puan yok
-            else:
-                final_points = word_points  # Eksi puan her zaman var
-        else:
-            # 40+ sorularda normal puanlama
-            if is_correct:
-                combo_multiplier = score_data.get("combo_multiplier", 1.0)
-                final_points = int(word_points * combo_multiplier)
-            else:
-                final_points = word_points
+    with col4:
+        if st.button("🔄 Genel Tekrar", use_container_width=True,
+                     type="primary" if st.session_state.selected_test_type == "tekrar" else "secondary"):
+            st.session_state.selected_test_type = "tekrar"
+            st.session_state.current_question = None
 
-        # Combo cezası ekle
-        final_points += combo_penalty
+    # Test seçilmişse soruyu göster
+    if st.session_state.selected_test_type:
 
-        # Puanları güncelle
-        score_data["score"] += final_points
-        score_data["daily"][today_str]["puan"] += final_points
+        # Yanlış kelimeler kontrolü
+        if st.session_state.selected_test_type == "yanlis":
+            yanlis_kelimeler = [k for k in kelimeler if k.get("wrong_count", 0) > 0]
+            if not yanlis_kelimeler:
+                st.success("🎉 Hiç yanlış kelime yok!")
+                st.session_state.selected_test_type = None
+                st.stop()
 
-        if is_correct:
-            score_data["daily"][today_str]["dogru"] += 1
-            return f"✅ Doğru! (+{final_points} puan)"
-        else:
-            score_data["daily"][today_str]["yanlis"] += 1
-            soru["wrong_count"] = soru.get("wrong_count", 0) + 1
-            soru["last_wrong_date"] = today_str
+        st.divider()
 
-            penalty_msg = f"({final_points} puan)" if final_points != 0 else ""
-            combo_msg = ""
-            if combo_penalty < 0:
-                combo_msg = f" | Seri ceza: {combo_penalty}"
+        # Mevcut soruyu kontrol et, yoksa yeni soru üret
+        if "current_question" not in st.session_state or st.session_state.current_question is None:
+            result = generate_question(st.session_state.selected_test_type)
+            if result[0] is None:  # Yanlış kelime yoksa
+                st.success("🎉 Hiç yanlış kelime yok!")
+                st.session_state.selected_test_type = None
+                st.stop()
 
-            return f"❌ Yanlış! Doğru cevap: **{dogru}** {penalty_msg}{combo_msg}"
+            st.session_state.current_question = {
+                "soru": result[0],
+                "dogru": result[1],
+                "secenekler": result[2],
+                "question_text": result[3],
+                "answered": False,
+                "result_message": ""
+            }
 
+        question_data = st.session_state.current_question
 
-    def soru_goster(soru, dogru, secenekler, test_key, test_type="normal"):
-        """Soru göster ve cevabı işle"""
-        if f"{test_key}_cevap_verildi" not in st.session_state:
-            st.session_state[f"{test_key}_cevap_verildi"] = False
-            st.session_state[f"{test_key}_sonuc_mesaji"] = ""
+        # Soruyu göster
+        st.write(question_data["question_text"])
 
         # Kelime yaşı bilgisi
-        age_days = get_word_age_days(soru)
+        age_days = get_word_age_days(question_data["soru"])
         if age_days > 0:
             if age_days >= 30:
                 age_info = f"📅 {age_days} gün önce eklendi (🎯 3 puan)"
@@ -435,131 +491,117 @@ elif menu == "📝 Testler":
                 age_info = f"📅 {age_days} gün önce eklendi (🎯 1 puan)"
             st.caption(age_info)
 
-        # Soru ve seçenekler
-        secim = st.radio("Seçenekler:", secenekler, key=f"{test_key}_radio")
+        # İlk 40 soru uyarısı
+        if st.session_state.selected_test_type in ["en_tr", "tr_en"] and score_data["answered_today"] < 40:
+            st.info(f"ℹ️ İlk 40 soruda sadece eksi puan verilir. Kalan: {40 - score_data['answered_today']}")
 
-        col1, col2 = st.columns([1, 4])
-        with col1:
-            if st.button("Cevapla", key=f"{test_key}_cevapla") and not st.session_state[f"{test_key}_cevap_verildi"]:
-                st.session_state[f"{test_key}_cevap_verildi"] = True
-                st.session_state[f"{test_key}_sonuc_mesaji"] = process_answer(secim == dogru, soru, dogru, test_type)
-                safe_save_data()
-                st.rerun()
+        # Cevap verilmemişse seçenekleri göster
+        if not question_data["answered"]:
+            selected_answer = st.radio(
+                "Seçenekler:",
+                question_data["secenekler"],
+                key=f"answer_radio_{st.session_state.selected_test_type}"
+            )
 
-        # Sonuç mesajı göster
-        if st.session_state[f"{test_key}_cevap_verildi"]:
-            if "✅" in st.session_state[f"{test_key}_sonuc_mesaji"]:
-                st.success(st.session_state[f"{test_key}_sonuc_mesaji"])
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                if st.button("Cevapla", key="answer_btn", type="primary"):
+                    # Cevabı işle
+                    is_correct = selected_answer == question_data["dogru"]
+
+                    # Puan hesaplama
+                    score_data["answered_today"] += 1
+                    word_points = calculate_word_points(question_data["soru"], is_correct)
+                    combo_penalty = update_combo_system(is_correct)
+
+                    # Test türüne göre puan hesaplama
+                    if st.session_state.selected_test_type in ["en_tr", "tr_en"] and score_data["answered_today"] <= 40:
+                        if is_correct:
+                            final_points = 0  # İlk 40 soruda artı puan yok
+                        else:
+                            final_points = word_points  # Eksi puan her zaman var
+                    else:
+                        # 40+ sorularda normal puanlama
+                        if is_correct:
+                            combo_multiplier = score_data.get("combo_multiplier", 1.0)
+                            final_points = int(word_points * combo_multiplier)
+                        else:
+                            final_points = word_points
+
+                    # Combo cezası ekle
+                    final_points += combo_penalty
+
+                    # Puanları güncelle
+                    score_data["score"] += final_points
+                    score_data["daily"][today_str]["puan"] += final_points
+
+                    if is_correct:
+                        score_data["daily"][today_str]["dogru"] += 1
+                        question_data["result_message"] = f"✅ Doğru! (+{final_points} puan)"
+                    else:
+                        score_data["daily"][today_str]["yanlis"] += 1
+                        question_data["soru"]["wrong_count"] = question_data["soru"].get("wrong_count", 0) + 1
+                        question_data["soru"]["last_wrong_date"] = today_str
+
+                        penalty_msg = f"({final_points} puan)" if final_points != 0 else ""
+                        combo_msg = ""
+                        if combo_penalty < 0:
+                            combo_msg = f" | Seri ceza: {combo_penalty}"
+
+                        question_data[
+                            "result_message"] = f"❌ Yanlış! Doğru cevap: **{question_data['dogru']}** {penalty_msg}{combo_msg}"
+
+                    question_data["answered"] = True
+                    safe_save_data()
+                    st.rerun()
+
+        # Cevap verildiyse sonucu göster
+        else:
+            if "✅" in question_data["result_message"]:
+                st.success(question_data["result_message"])
             else:
-                st.error(st.session_state[f"{test_key}_sonuc_mesaji"])
+                st.error(question_data["result_message"])
 
             # Sonraki soru butonu
-            if st.button("🔄 Sonraki Soru", key=f"{test_key}_sonraki", use_container_width=True, type="secondary"):
-                # Session state'i temizle
-                st.session_state[f"{test_key}_cevap_verildi"] = False
-                st.session_state[f"{test_key}_sonuc_mesaji"] = ""
-                st.session_state[f"{test_key}_selected_answer"] = None
-                # Radio button session state'ini de temizle
-                if f"{test_key}_radio" in st.session_state:
-                    del st.session_state[f"{test_key}_radio"]
-                st.rerun()
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if st.button("🔄 Sonraki Soru", key="next_question", type="primary", use_container_width=True):
+                    st.session_state.current_question = None  # Yeni soru için sıfırla
+                    st.rerun()
+
+            with col2:
+                if st.button("🏠 Test Menüsüne Dön", key="back_to_menu", use_container_width=True):
+                    st.session_state.selected_test_type = None
+                    st.session_state.current_question = None
+                    st.rerun()
 
             # Kelime düzenleme bölümü
             with st.expander("✏️ Kelimeyi Düzenle / Sil"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    yeni_en = st.text_input("İngilizce", soru["en"], key=f"edit_en_{test_key}")
-                    yeni_tr = st.text_input("Türkçe", soru["tr"], key=f"edit_tr_{test_key}")
+                    yeni_en = st.text_input("İngilizce", question_data["soru"]["en"], key="edit_en")
+                    yeni_tr = st.text_input("Türkçe", question_data["soru"]["tr"], key="edit_tr")
 
                 with col2:
-                    if st.button("💾 Kaydet", key=f"save_edit_{test_key}"):
+                    if st.button("💾 Kaydet", key="save_edit"):
                         if yeni_en.strip() and yeni_tr.strip():
-                            soru["en"] = yeni_en.strip()
-                            soru["tr"] = yeni_tr.strip()
+                            question_data["soru"]["en"] = yeni_en.strip()
+                            question_data["soru"]["tr"] = yeni_tr.strip()
                             safe_save_data()
                             st.success("✅ Kelime güncellendi!")
                             st.rerun()
                         else:
                             st.error("❌ Boş bırakılamaz!")
 
-                    if st.button("🗑️ Sil", key=f"delete_{test_key}", type="secondary"):
-                        kelimeler.remove(soru)
+                    if st.button("🗑️ Sil", key="delete_word", type="secondary"):
+                        kelimeler.remove(question_data["soru"])
                         safe_save_data()
                         st.warning("🗑️ Kelime silindi!")
-                        # Silme işleminden sonra session state'i temizle
-                        st.session_state[f"{test_key}_cevap_verildi"] = False
-                        st.session_state[f"{test_key}_sonuc_mesaji"] = ""
-                        st.session_state[f"{test_key}_selected_answer"] = None
-                        if f"{test_key}_radio" in st.session_state:
-                            del st.session_state[f"{test_key}_radio"]
+                        st.session_state.current_question = None
+                        st.session_state.selected_test_type = None
                         st.rerun()
-
-
-    # Test türlerine göre sorular
-    if test_secim == "🆕 Yeni Test (EN→TR)":
-        soru = random.choice(kelimeler)
-        dogru = soru["tr"]
-        yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
-        secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
-        random.shuffle(secenekler)
-
-        st.write(f"🇺🇸 **{soru['en']}** ne demek?")
-
-        # İlk 40 soru uyarısı
-        if score_data["answered_today"] < 40:
-            st.info(f"ℹ️ İlk 40 soruda sadece eksi puan verilir. Kalan: {40 - score_data['answered_today']}")
-
-        soru_goster(soru, dogru, secenekler, "yeni_test", "yeni_test")
-
-    elif test_secim == "🇹🇷 Türkçe Test (TR→EN)":
-        soru = random.choice(kelimeler)
-        dogru = soru["en"]
-        yanlislar = [k["en"] for k in kelimeler if k["en"] != dogru]
-        secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
-        random.shuffle(secenekler)
-
-        st.write(f"🇹🇷 **{soru['tr']}** kelimesinin İngilizcesi nedir?")
-
-        # İlk 40 soru uyarısı
-        if score_data["answered_today"] < 40:
-            st.info(f"ℹ️ İlk 40 soruda sadece eksi puan verilir. Kalan: {40 - score_data['answered_today']}")
-
-        soru_goster(soru, dogru, secenekler, "turkce_test", "turkce_test")
-
-    elif test_secim == "❌ Yanlış Kelimeler":
-        yanlis_kelimeler = [k for k in kelimeler if k.get("wrong_count", 0) > 0]
-        if yanlis_kelimeler:
-            soru = random.choice(yanlis_kelimeler)
-            dogru = soru["tr"]
-            yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
-            secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
-            random.shuffle(secenekler)
-
-            st.write(f"🇺🇸 **{soru['en']}** ne demek?")
-            st.caption(f"❌ Bu kelimeyi {soru.get('wrong_count', 0)} kez yanlış bildiniz")
-            soru_goster(soru, dogru, secenekler, "yanlis_test", "yanlis_test")
-        else:
-            st.success("🎉 Hiç yanlış kelime yok!")
-
-    elif test_secim == "🔄 Genel Tekrar":
-        soru = random.choice(kelimeler)
-        # Rastgele yön seçimi
-        if random.choice([True, False]):
-            # EN → TR
-            dogru = soru["tr"]
-            yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
-            secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
-            random.shuffle(secenekler)
-            st.write(f"🇺🇸 **{soru['en']}** ne demek?")
-            soru_goster(soru, dogru, secenekler, "tekrar_test_en", "tekrar")
-        else:
-            # TR → EN
-            dogru = soru["en"]
-            yanlislar = [k["en"] for k in kelimeler if k["en"] != dogru]
-            secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
-            random.shuffle(secenekler)
-            st.write(f"🇹🇷 **{soru['tr']}** kelimesinin İngilizcesi nedir?")
-            soru_goster(soru, dogru, secenekler, "tekrar_test_tr", "tekrar")
+    else:
+        st.info("👆 Yukarıdaki butonlardan bir test türü seçin")
 
 # -------------------- İstatistikler --------------------
 
@@ -970,7 +1012,7 @@ elif menu == "🔧 Ayarlar":
     with tab3:
         st.subheader("ℹ️ Uygulama Bilgileri")
 
-        st.write("**🔧 Versiyon:** 2.0 - Gelişmiş")
+        st.write("**🔧 Versiyon:** 2.1 - Sabit Soru Sistemi")
         st.write("**📅 Son Güncelleme:** Bugün")
         st.write("**🎯 Özellikler:**")
 
@@ -982,7 +1024,8 @@ elif menu == "🔧 Ayarlar":
             "✅ Gelişmiş istatistikler",
             "✅ Kelime düzenleme",
             "✅ Veri güvenliği",
-            "✅ Mobil uyumlu arayüz"
+            "✅ Mobil uyumlu arayüz",
+            "✅ Sabit soru sistemi (artık sorular değişmiyor!)"
         ]
 
         for feature in features:
@@ -992,7 +1035,7 @@ elif menu == "🔧 Ayarlar":
 
 with st.sidebar:
     st.divider()
-    st.caption("📘 İngilizce Akademi v2.0")
+    st.caption("📘 İngilizce Akademi v2.1")
     st.caption("💾 Otomatik backup aktif")
     if len(kelimeler) > 0:
         st.caption(f"🔄 Son güncelleme: {current_time.strftime('%H:%M')}")
@@ -1000,5 +1043,4 @@ with st.sidebar:
 # Otomatik kaydetme (her 10 saniyede bir)
 if st.session_state.get('last_save_time', 0) + 10 < current_time.timestamp():
     safe_save_data()
-    st.session_state['last_save_time'] = current_time.timestamp()
     st.session_state['last_save_time'] = current_time.timestamp()
