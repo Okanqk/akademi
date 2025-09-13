@@ -1197,4 +1197,4 @@ elif menu == "🔧 Ayarlar":
 
         st.write("**🔧 Versiyon:** 2.2 - Yeni Test Sistemi")
         st.write("**📅 Son Güncelleme:** Bugün")
-        st.write("**🎯
+    st.write("**🎯**")
