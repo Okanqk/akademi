@@ -85,11 +85,19 @@ def initialize_default_data():
     ]
 
     default_score_data = {
-        "score": 25, "daily": {
-            "2025-01-15": {"puan": 5, "yeni_kelime": 5, "dogru": 0, "yanlis": 0}
+        "score": 25,
+        "daily": {
+            "2025-01-15": {"puan": 5, "yeni_kelime": 5, "dogru": 0, "yanlis": 0,
+                           "en_tr_answered": 0, "tr_en_answered": 0, "tekrar_answered": 0}
         },
-        "last_check_date": "2025-01-15", "answered_today": 0,
-        "correct_streak": 0, "wrong_streak": 0, "combo_multiplier": 1.0
+        "last_check_date": "2025-01-15",
+        "answered_today": 0,
+        "correct_streak": 0,
+        "wrong_streak": 0,
+        "combo_multiplier": 1.0,
+        "en_tr_answered": 0,
+        "tr_en_answered": 0,
+        "tekrar_answered": 0
     }
 
     return default_kelimeler, default_score_data
@@ -100,7 +108,8 @@ def safe_load_data():
     kelimeler = []
     score_data = {
         "score": 0, "daily": {}, "last_check_date": None, "answered_today": 0,
-        "correct_streak": 0, "wrong_streak": 0, "combo_multiplier": 1.0
+        "correct_streak": 0, "wrong_streak": 0, "combo_multiplier": 1.0,
+        "en_tr_answered": 0, "tr_en_answered": 0, "tekrar_answered": 0
     }
 
     # Ana dosyaları yüklemeyi dene
@@ -158,6 +167,14 @@ def safe_load_data():
     if not isinstance(score_data, dict):
         score_data = initialize_default_data()[1]
 
+    # Yeni alanları ekle (geriye dönük uyumluluk için)
+    if "en_tr_answered" not in score_data:
+        score_data["en_tr_answered"] = 0
+    if "tr_en_answered" not in score_data:
+        score_data["tr_en_answered"] = 0
+    if "tekrar_answered" not in score_data:
+        score_data["tekrar_answered"] = 0
+
     return kelimeler, score_data
 
 
@@ -170,6 +187,67 @@ def get_word_age_days(word):
         return (today - added_date).days
     except:
         return 0
+
+
+def get_word_age_category(word):
+    """Kelimenin yaş kategorisini döndür"""
+    age_days = get_word_age_days(word)
+    if age_days < 7:
+        return "yeni"  # 0-6 gün
+    elif age_days < 30:
+        return "orta"  # 7-29 gün
+    else:
+        return "eski"  # 30+ gün
+
+
+def select_word_by_probability(test_type):
+    """Test türüne göre kelime seç - yaş kategorisi olasılıklarına göre"""
+    if not kelimeler:
+        return None
+
+    # Kelimeleri yaş kategorilerine göre ayır
+    yeni_kelimeler = [k for k in kelimeler if get_word_age_category(k) == "yeni"]
+    orta_kelimeler = [k for k in kelimeler if get_word_age_category(k) == "orta"]
+    eski_kelimeler = [k for k in kelimeler if get_word_age_category(k) == "eski"]
+
+    # Test türüne göre olasılıkları belirle
+    if test_type in ["en_tr", "tr_en"]:
+        # Yeni test ve Türkçe test: %50 yeni, %30 orta, %20 eski
+        probabilities = [0.5, 0.3, 0.2]
+    elif test_type == "tekrar":
+        # Genel tekrar: %20 yeni, %30 orta, %50 eski
+        probabilities = [0.2, 0.3, 0.5]
+    else:
+        # Yanlış kelimeler için normal seçim
+        return random.choice(kelimeler)
+
+    # Mevcut kelimelere göre kategorileri hazırla
+    categories = []
+    if yeni_kelimeler:
+        categories.append(("yeni", yeni_kelimeler, probabilities[0]))
+    if orta_kelimeler:
+        categories.append(("orta", orta_kelimeler, probabilities[1]))
+    if eski_kelimeler:
+        categories.append(("eski", eski_kelimeler, probabilities[2]))
+
+    if not categories:
+        return random.choice(kelimeler)
+
+    # Olasılıkları normalize et
+    total_prob = sum(cat[2] for cat in categories)
+    normalized_probs = [cat[2] / total_prob for cat in categories]
+
+    # Rastgele seçim yap
+    rand_val = random.random()
+    cumulative_prob = 0
+
+    for i, (category_name, category_words, _) in enumerate(categories):
+        cumulative_prob += normalized_probs[i]
+        if rand_val <= cumulative_prob:
+            return random.choice(category_words)
+
+    # Fallback
+    return random.choice(categories[-1][1])
 
 
 def calculate_word_points(word, is_correct):
@@ -229,10 +307,48 @@ def check_daily_word_penalty():
     return 0
 
 
+def is_daily_test_goal_complete():
+    """Günlük test hedeflerinin tamamlanıp tamamlanmadığını kontrol et"""
+    en_tr_complete = score_data.get("en_tr_answered", 0) >= 30
+    tr_en_complete = score_data.get("tr_en_answered", 0) >= 30
+    tekrar_complete = score_data.get("tekrar_answered", 0) >= 30
+    return en_tr_complete and tr_en_complete and tekrar_complete
+
+
+def get_test_progress_info(test_type):
+    """Test türü için ilerleme bilgisini döndür"""
+    if test_type == "en_tr":
+        current = score_data.get("en_tr_answered", 0)
+        target = 30
+        test_name = "EN→TR"
+    elif test_type == "tr_en":
+        current = score_data.get("tr_en_answered", 0)
+        target = 30
+        test_name = "TR→EN"
+    elif test_type == "tekrar":
+        current = score_data.get("tekrar_answered", 0)
+        target = 30
+        test_name = "Genel Tekrar"
+    else:
+        return None, None, None
+
+    return current, target, test_name
+
+
+def can_earn_points(test_type):
+    """Bu test türünde puan kazanılabilir mi kontrol et"""
+    # Yanlış kelime testinde her zaman puan alınabilir
+    if test_type == "yanlis":
+        return True
+
+    # Diğer testlerde günlük hedef tamamlanmış mı kontrol et
+    return is_daily_test_goal_complete()
+
+
 def generate_question(test_type):
     """Test türüne göre soru üret ve session state'e kaydet"""
     if test_type == "en_tr":
-        soru = random.choice(kelimeler)
+        soru = select_word_by_probability("en_tr")
         dogru = soru["tr"]
         yanlislar = [k["tr"] for k in kelimeler if k["tr"] != dogru]
         secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
@@ -240,7 +356,7 @@ def generate_question(test_type):
         question_text = f"🇺🇸 **{soru['en']}** ne demek?"
 
     elif test_type == "tr_en":
-        soru = random.choice(kelimeler)
+        soru = select_word_by_probability("tr_en")
         dogru = soru["en"]
         yanlislar = [k["en"] for k in kelimeler if k["en"] != dogru]
         secenekler = random.sample(yanlislar, min(3, len(yanlislar))) + [dogru]
@@ -259,7 +375,7 @@ def generate_question(test_type):
         question_text = f"🇺🇸 **{soru['en']}** ne demek?"
 
     elif test_type == "tekrar":
-        soru = random.choice(kelimeler)
+        soru = select_word_by_probability("tekrar")
         # Rastgele yön seçimi
         if random.choice([True, False]):
             # EN → TR
@@ -308,16 +424,22 @@ if score_data.get("last_check_date") != today_str:
     score_data["correct_streak"] = 0
     score_data["wrong_streak"] = 0
     score_data["combo_multiplier"] = 1.0
+    score_data["en_tr_answered"] = 0
+    score_data["tr_en_answered"] = 0
+    score_data["tekrar_answered"] = 0
 
 if today_str not in score_data["daily"]:
-    score_data["daily"][today_str] = {"puan": 0, "yeni_kelime": 0, "dogru": 0, "yanlis": 0}
+    score_data["daily"][today_str] = {
+        "puan": 0, "yeni_kelime": 0, "dogru": 0, "yanlis": 0,
+        "en_tr_answered": 0, "tr_en_answered": 0, "tekrar_answered": 0
+    }
 
 safe_save_data()
 
 # -------------------- Arayüz --------------------
 
 st.set_page_config(page_title="İngilizce Akademi", page_icon="📘", layout="wide")
-st.title("📘 Akademi - İngilizce Kelime Uygulaması")
+st.title("📘 Akademi - İngilizce Kelime Uygulaması v2.2")
 
 # Sidebar bilgileri
 with st.sidebar:
@@ -329,8 +451,25 @@ with st.sidebar:
     st.markdown("### 📈 Günlük Durum")
     bugun_kelime = score_data["daily"][today_str]["yeni_kelime"]
     st.write(f"📚 **Bugün eklenen:** {bugun_kelime}/10 kelime")
-    st.write(f"📝 **Cevaplanan soru:** {score_data['answered_today']}")
     st.write(f"📖 **Toplam kelime:** {len(kelimeler)}")
+
+    # Test hedefleri
+    st.markdown("### 🎯 Test Hedefleri")
+    en_tr_current = score_data.get("en_tr_answered", 0)
+    tr_en_current = score_data.get("tr_en_answered", 0)
+    tekrar_current = score_data.get("tekrar_answered", 0)
+
+    st.write(f"🆕 **EN→TR:** {en_tr_current}/30")
+    st.progress(min(en_tr_current / 30, 1.0))
+
+    st.write(f"🇹🇷 **TR→EN:** {tr_en_current}/30")
+    st.progress(min(tr_en_current / 30, 1.0))
+
+    st.write(f"🔄 **Genel Tekrar:** {tekrar_current}/30")
+    st.progress(min(tekrar_current / 30, 1.0))
+
+    if is_daily_test_goal_complete():
+        st.success("🎉 Tüm test hedefleri tamamlandı!")
 
     # Combo durumu
     if score_data.get("correct_streak", 0) > 0:
@@ -399,10 +538,10 @@ if menu == "🏠 Ana Sayfa":
 
     with col2:
         st.write("**Test Çözme Hedefi:**")
-        cevaplanan = score_data["answered_today"]
-        test_progress = st.progress(min(cevaplanan / 40, 1.0))
-        st.write(f"{cevaplanan}/40 soru çözüldü")
-        if cevaplanan >= 40:
+        total_answered = en_tr_current + tr_en_current + tekrar_current
+        test_progress = st.progress(min(total_answered / 90, 1.0))
+        st.write(f"{total_answered}/90 soru çözüldü")
+        if is_daily_test_goal_complete():
             st.success("🎉 Puan kazanmaya başladınız!")
 
 # -------------------- Testler --------------------
@@ -422,13 +561,17 @@ elif menu == "📝 Testler":
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        if st.button("🆕 Yeni Test (EN→TR)", use_container_width=True,
+        current, target, test_name = get_test_progress_info("en_tr")
+        button_text = f"🆕 Yeni Test (EN→TR)\n{current}/{target}"
+        if st.button(button_text, use_container_width=True,
                      type="primary" if st.session_state.selected_test_type == "en_tr" else "secondary"):
             st.session_state.selected_test_type = "en_tr"
             st.session_state.current_question = None  # Yeni soru için sıfırla
 
     with col2:
-        if st.button("🇹🇷 Türkçe Test (TR→EN)", use_container_width=True,
+        current, target, test_name = get_test_progress_info("tr_en")
+        button_text = f"🇹🇷 Türkçe Test (TR→EN)\n{current}/{target}"
+        if st.button(button_text, use_container_width=True,
                      type="primary" if st.session_state.selected_test_type == "tr_en" else "secondary"):
             st.session_state.selected_test_type = "tr_en"
             st.session_state.current_question = None
@@ -440,7 +583,9 @@ elif menu == "📝 Testler":
             st.session_state.current_question = None
 
     with col4:
-        if st.button("🔄 Genel Tekrar", use_container_width=True,
+        current, target, test_name = get_test_progress_info("tekrar")
+        button_text = f"🔄 Genel Tekrar\n{current}/{target}"
+        if st.button(button_text, use_container_width=True,
                      type="primary" if st.session_state.selected_test_type == "tekrar" else "secondary"):
             st.session_state.selected_test_type = "tekrar"
             st.session_state.current_question = None
@@ -457,6 +602,19 @@ elif menu == "📝 Testler":
                 st.stop()
 
         st.divider()
+
+        # İlerleme bilgisi göster
+        if st.session_state.selected_test_type != "yanlis":
+            current, target, test_name = get_test_progress_info(st.session_state.selected_test_type)
+            if current < target:
+                st.info(f"📊 {test_name} ilerlemesi: {current}/{target} - Hedefe {target - current} soru kaldı")
+            else:
+                st.success(f"🎉 {test_name} günlük hedefi tamamlandı! ({current}/{target})")
+
+        # Puan kazanma durumu
+        can_get_points = can_earn_points(st.session_state.selected_test_type)
+        if not can_get_points and st.session_state.selected_test_type != "yanlis":
+            st.warning("⚠️ Günlük test hedefleri tamamlanmadan sadece eksi puan verilir!")
 
         # Mevcut soruyu kontrol et, yoksa yeni soru üret
         if "current_question" not in st.session_state or st.session_state.current_question is None:
@@ -480,27 +638,28 @@ elif menu == "📝 Testler":
         # Soruyu göster
         st.write(question_data["question_text"])
 
-        # Kelime yaşı bilgisi
+        # Kelime yaşı ve kategori bilgisi
         age_days = get_word_age_days(question_data["soru"])
+        age_category = get_word_age_category(question_data["soru"])
         if age_days > 0:
-            if age_days >= 30:
-                age_info = f"📅 {age_days} gün önce eklendi (🎯 3 puan)"
-            elif age_days >= 7:
-                age_info = f"📅 {age_days} gün önce eklendi (🎯 2 puan)"
+            if age_category == "eski":
+                age_info = f"📅 {age_days} gün önce eklendi (🎯 Eski kelime - 3 puan)"
+            elif age_category == "orta":
+                age_info = f"📅 {age_days} gün önce eklendi (🎯 Orta kelime - 2 puan)"
             else:
-                age_info = f"📅 {age_days} gün önce eklendi (🎯 1 puan)"
+                age_info = f"📅 {age_days} gün önce eklendi (🎯 Yeni kelime - 1 puan)"
             st.caption(age_info)
 
-        # İlk 40 soru uyarısı
-        if st.session_state.selected_test_type in ["en_tr", "tr_en"] and score_data["answered_today"] < 40:
-            st.info(f"ℹ️ İlk 40 soruda sadece eksi puan verilir. Kalan: {40 - score_data['answered_today']}")
+        # Hedef tamamlanmadan uyarısı
+        if not can_get_points and st.session_state.selected_test_type != "yanlis":
+            st.info("ℹ️ Günlük test hedefleri tamamlanmadan sadece eksi puan verilir!")
 
         # Cevap verilmemişse seçenekleri göster
         if not question_data["answered"]:
             selected_answer = st.radio(
                 "Seçenekler:",
                 question_data["secenekler"],
-                key=f"answer_radio_{st.session_state.selected_test_type}"
+                key=f"answer_radio_{st.session_state.selected_test_type}_{hash(str(question_data))}"
             )
 
             col1, col2 = st.columns([1, 4])
@@ -509,35 +668,51 @@ elif menu == "📝 Testler":
                     # Cevabı işle
                     is_correct = selected_answer == question_data["dogru"]
 
-                    # Puan hesaplama
+                    # Test sayaçlarını güncelle
                     score_data["answered_today"] += 1
+                    test_type = st.session_state.selected_test_type
+
+                    if test_type == "en_tr":
+                        score_data["en_tr_answered"] += 1
+                        score_data["daily"][today_str]["en_tr_answered"] += 1
+                    elif test_type == "tr_en":
+                        score_data["tr_en_answered"] += 1
+                        score_data["daily"][today_str]["tr_en_answered"] += 1
+                    elif test_type == "tekrar":
+                        score_data["tekrar_answered"] += 1
+                        score_data["daily"][today_str]["tekrar_answered"] += 1
+
+                    # Puan hesaplama
                     word_points = calculate_word_points(question_data["soru"], is_correct)
                     combo_penalty = update_combo_system(is_correct)
 
-                    # Test türüne göre puan hesaplama
-                    if st.session_state.selected_test_type in ["en_tr", "tr_en"] and score_data["answered_today"] <= 40:
-                        if is_correct:
-                            final_points = 0  # İlk 40 soruda artı puan yok
-                        else:
-                            final_points = word_points  # Eksi puan her zaman var
-                    else:
-                        # 40+ sorularda normal puanlama
-                        if is_correct:
+                    # Puan verme kuralları
+                    if is_correct:
+                        if can_get_points:
+                            # Hedef tamamlandıysa normal puanlama
                             combo_multiplier = score_data.get("combo_multiplier", 1.0)
                             final_points = int(word_points * combo_multiplier)
                         else:
-                            final_points = word_points
+                            # Hedef tamamlanmadıysa artı puan yok
+                            final_points = 0
+                    else:
+                        # Yanlış cevaplarda her zaman eksi puan
+                        final_points = word_points
 
                     # Combo cezası ekle
                     final_points += combo_penalty
 
                     # Puanları güncelle
-                    score_data["score"] += final_points
-                    score_data["daily"][today_str]["puan"] += final_points
+                    if final_points != 0:
+                        score_data["score"] += final_points
+                        score_data["daily"][today_str]["puan"] += final_points
 
                     if is_correct:
                         score_data["daily"][today_str]["dogru"] += 1
-                        question_data["result_message"] = f"✅ Doğru! (+{final_points} puan)"
+                        if final_points > 0:
+                            question_data["result_message"] = f"✅ Doğru! (+{final_points} puan)"
+                        else:
+                            question_data["result_message"] = f"✅ Doğru! (Hedef tamamlanınca puan alacaksınız)"
                     else:
                         score_data["daily"][today_str]["yanlis"] += 1
                         question_data["soru"]["wrong_count"] = question_data["soru"].get("wrong_count", 0) + 1
@@ -978,7 +1153,8 @@ elif menu == "🔧 Ayarlar":
                 score_data.update({
                     "score": 0, "daily": {}, "last_check_date": None,
                     "answered_today": 0, "correct_streak": 0, "wrong_streak": 0,
-                    "combo_multiplier": 1.0
+                    "combo_multiplier": 1.0, "en_tr_answered": 0,
+                    "tr_en_answered": 0, "tekrar_answered": 0
                 })
                 if safe_save_data():
                     st.success("✅ Tüm veriler sıfırlandı!")
@@ -991,13 +1167,20 @@ elif menu == "🔧 Ayarlar":
         st.info(
             "• Her gün en az 10 kelime eklenmeli\n• Eksik kelime başına -20 puan cezası\n• Her eklenen kelime +1 puan")
 
-        st.write("**📝 Test Puanlaması:**")
+        st.write("**📝 Yeni Test Sistemi (v2.2):**")
         st.info(
-            "• İlk 40 soruda sadece eksi puan verilir\n"
-            "• 40+ sorularda yaş bazlı puanlama:\n"
-            "  - Yeni kelimeler (0-6 gün): +1 puan\n"
-            "  - Orta kelimeler (7-29 gün): +2 puan\n"
-            "  - Eski kelimeler (30+ gün): +3 puan\n"
+            "• EN→TR Testi: 30 soru hedefi (%50 yeni, %30 orta, %20 eski kelime)\n"
+            "• TR→EN Testi: 30 soru hedefi (%50 yeni, %30 orta, %20 eski kelime)\n"
+            "• Genel Tekrar: 30 soru hedefi (%20 yeni, %30 orta, %50 eski kelime)\n"
+            "• Tüm hedefler tamamlandıktan sonra artı puan verilir\n"
+            "• Yanlış cevaplarda her zaman -2 puan"
+        )
+
+        st.write("**🎯 Puanlama Sistemi:**")
+        st.info(
+            "• Yeni kelimeler (0-6 gün): +1 puan\n"
+            "• Orta kelimeler (7-29 gün): +2 puan\n"
+            "• Eski kelimeler (30+ gün): +3 puan\n"
             "• Yanlış cevap: -2 puan"
         )
 
@@ -1012,35 +1195,6 @@ elif menu == "🔧 Ayarlar":
     with tab3:
         st.subheader("ℹ️ Uygulama Bilgileri")
 
-        st.write("**🔧 Versiyon:** 2.1 - Sabit Soru Sistemi")
+        st.write("**🔧 Versiyon:** 2.2 - Yeni Test Sistemi")
         st.write("**📅 Son Güncelleme:** Bugün")
-        st.write("**🎯 Özellikler:**")
-
-        features = [
-            "✅ Otomatik backup sistemi",
-            "✅ Yaş bazlı puanlama",
-            "✅ Combo sistemi",
-            "✅ Günlük hedef takibi",
-            "✅ Gelişmiş istatistikler",
-            "✅ Kelime düzenleme",
-            "✅ Veri güvenliği",
-            "✅ Mobil uyumlu arayüz",
-            "✅ Sabit soru sistemi (artık sorular değişmiyor!)"
-        ]
-
-        for feature in features:
-            st.write(feature)
-
-# -------------------- Alt Bilgi --------------------
-
-with st.sidebar:
-    st.divider()
-    st.caption("📘 İngilizce Akademi v2.1")
-    st.caption("💾 Otomatik backup aktif")
-    if len(kelimeler) > 0:
-        st.caption(f"🔄 Son güncelleme: {current_time.strftime('%H:%M')}")
-
-# Otomatik kaydetme (her 10 saniyede bir)
-if st.session_state.get('last_save_time', 0) + 10 < current_time.timestamp():
-    safe_save_data()
-    st.session_state['last_save_time'] = current_time.timestamp()
+        st.write("**🎯
