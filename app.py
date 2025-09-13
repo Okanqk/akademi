@@ -6,6 +6,8 @@ import shutil
 from datetime import datetime, timedelta
 import pandas as pd
 import requests
+import zipfile
+import io
 
 DATA_FILE = "kelimeler.json"
 SCORE_FILE = "puan.json"
@@ -72,6 +74,180 @@ def safe_save_data():
         if restore_from_backup():
             st.warning("Backup'tan geri yükleme yapıldı.")
         return False
+
+
+def create_complete_backup_zip():
+    """Tam yedekleme ZIP dosyası oluştur"""
+    try:
+        backup_data = {
+            'kelimeler': kelimeler,
+            'score_data': score_data,
+            'backup_date': datetime.now().isoformat(),
+            'app_version': '2.2',
+            'total_words': len(kelimeler),
+            'total_score': score_data.get('score', 0)
+        }
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Ana veriler
+            zip_file.writestr("kelimeler.json", json.dumps(kelimeler, ensure_ascii=False, indent=2))
+            zip_file.writestr("puan.json", json.dumps(score_data, ensure_ascii=False, indent=2))
+            # Yedekleme bilgileri
+            zip_file.writestr("backup_info.json", json.dumps(backup_data, ensure_ascii=False, indent=2))
+
+        return zip_buffer.getvalue()
+    except Exception as e:
+        st.error(f"ZIP oluşturma hatası: {e}")
+        return None
+
+
+def validate_backup_data(kelimeler_data, score_data_backup):
+    """Yedekleme verilerini doğrula"""
+    errors = []
+    warnings = []
+
+    # Kelimeler doğrulama
+    if not isinstance(kelimeler_data, list):
+        errors.append("Kelimeler verisi liste formatında değil")
+    else:
+        for i, kelime in enumerate(kelimeler_data):
+            if not isinstance(kelime, dict):
+                errors.append(f"Kelime {i + 1}: Dict formatında değil")
+            elif not all(key in kelime for key in ['en', 'tr']):
+                errors.append(f"Kelime {i + 1}: 'en' veya 'tr' alanı eksik")
+            else:
+                # Eksik alanları varsayılan değerlerle doldur
+                if 'wrong_count' not in kelime:
+                    kelime['wrong_count'] = 0
+                    warnings.append(f"Kelime '{kelime.get('en', 'bilinmiyor')}': wrong_count eklendi")
+                if 'added_date' not in kelime:
+                    kelime['added_date'] = datetime.now().strftime("%Y-%m-%d")
+                    warnings.append(f"Kelime '{kelime.get('en', 'bilinmiyor')}': added_date eklendi")
+
+    # Puan verileri doğrulama
+    if not isinstance(score_data_backup, dict):
+        errors.append("Puan verisi dict formatında değil")
+    else:
+        # Zorunlu alanları kontrol et ve eksikleri ekle
+        required_fields = {
+            'score': 0,
+            'daily': {},
+            'last_check_date': None,
+            'answered_today': 0,
+            'correct_streak': 0,
+            'wrong_streak': 0,
+            'combo_multiplier': 1.0,
+            'en_tr_answered': 0,
+            'tr_en_answered': 0,
+            'tekrar_answered': 0
+        }
+
+        for field, default_value in required_fields.items():
+            if field not in score_data_backup:
+                score_data_backup[field] = default_value
+                warnings.append(f"Puan verisi: '{field}' alanı eklendi")
+
+        # Daily verilerini kontrol et
+        if 'daily' in score_data_backup and isinstance(score_data_backup['daily'], dict):
+            for date_str, day_data in score_data_backup['daily'].items():
+                if not isinstance(day_data, dict):
+                    errors.append(f"Günlük veri {date_str}: Dict formatında değil")
+                else:
+                    # Günlük veri için gerekli alanlar
+                    daily_required = {
+                        'puan': 0,
+                        'yeni_kelime': 0,
+                        'dogru': 0,
+                        'yanlis': 0,
+                        'en_tr_answered': 0,
+                        'tr_en_answered': 0,
+                        'tekrar_answered': 0
+                    }
+
+                    for field, default_value in daily_required.items():
+                        if field not in day_data:
+                            day_data[field] = default_value
+
+    return errors, warnings
+
+
+def restore_from_complete_backup(kelimeler_data, score_data_backup, preserve_daily_progress=True):
+    """Tam yedeklemeden geri yükle"""
+    try:
+        global kelimeler, score_data
+
+        # Verileri doğrula
+        errors, warnings = validate_backup_data(kelimeler_data, score_data_backup)
+
+        if errors:
+            return False, f"Doğrulama hataları: {'; '.join(errors)}"
+
+        # Mevcut günlük ilerlemeyi koru
+        if preserve_daily_progress and today_str in score_data.get('daily', {}):
+            current_daily = score_data['daily'][today_str].copy()
+            current_counters = {
+                'en_tr_answered': score_data.get('en_tr_answered', 0),
+                'tr_en_answered': score_data.get('tr_en_answered', 0),
+                'tekrar_answered': score_data.get('tekrar_answered', 0),
+                'answered_today': score_data.get('answered_today', 0),
+                'correct_streak': score_data.get('correct_streak', 0),
+                'wrong_streak': score_data.get('wrong_streak', 0),
+                'combo_multiplier': score_data.get('combo_multiplier', 1.0)
+            }
+        else:
+            current_daily = None
+            current_counters = None
+
+        # Kelimeleri kontrol et ve tarihlere göre günlük hedefleri güncelle
+        word_dates = {}
+        for kelime in kelimeler_data:
+            added_date = kelime.get('added_date')
+            if added_date:
+                if added_date not in word_dates:
+                    word_dates[added_date] = 0
+                word_dates[added_date] += 1
+
+        # Yedeklenen verileri yükle
+        kelimeler.clear()
+        kelimeler.extend(kelimeler_data)
+        score_data.clear()
+        score_data.update(score_data_backup)
+
+        # Kelime tarihlerine göre günlük hedefleri güncelle
+        for date_str, word_count in word_dates.items():
+            if date_str not in score_data['daily']:
+                score_data['daily'][date_str] = {
+                    'puan': word_count,  # Kelime ekleme puanı
+                    'yeni_kelime': word_count,
+                    'dogru': 0,
+                    'yanlis': 0,
+                    'en_tr_answered': 0,
+                    'tr_en_answered': 0,
+                    'tekrar_answered': 0
+                }
+            else:
+                # Mevcut günlük veriye kelime sayısını ekle (eğer eksikse)
+                if score_data['daily'][date_str]['yeni_kelime'] < word_count:
+                    diff = word_count - score_data['daily'][date_str]['yeni_kelime']
+                    score_data['daily'][date_str]['yeni_kelime'] = word_count
+                    score_data['daily'][date_str]['puan'] += diff  # Eksik puanları ekle
+
+        # Mevcut günlük ilerlemeyi geri yükle
+        if current_daily and preserve_daily_progress:
+            score_data['daily'][today_str] = current_daily
+            score_data.update(current_counters)
+            score_data['last_check_date'] = today_str
+
+        # Verileri kaydet
+        if safe_save_data():
+            warning_msg = f" Uyarılar: {len(warnings)} alan otomatik düzeltildi." if warnings else ""
+            return True, f"Veriler başarıyla yüklendi!{warning_msg}"
+        else:
+            return False, "Veriler yüklenirken kaydetme hatası oluştu"
+
+    except Exception as e:
+        return False, f"Geri yükleme hatası: {str(e)}"
 
 
 def initialize_default_data():
@@ -149,7 +325,7 @@ def safe_load_data():
 
             if os.path.exists(BACKUP_SCORE_FILE):
                 with open(BACKUP_SCORE_FILE, "r", encoding="utf-8") as f:
-                    loaded_score = json.load(f)
+                    loaded_score = json.loads(f)
                     for key in score_data.keys():
                         if key in loaded_score:
                             score_data[key] = loaded_score[key]
@@ -439,7 +615,7 @@ safe_save_data()
 # -------------------- Arayüz --------------------
 
 st.set_page_config(page_title="İngilizce Akademi", page_icon="📘", layout="wide")
-st.title("📘 Akademi - İngilizce Kelime Uygulaması v2.2")
+st.title("📘 Akademi - İngilizce Kelime Uygulaması v2.3")
 
 # Sidebar bilgileri
 with st.sidebar:
@@ -1060,6 +1236,103 @@ elif menu == "🔧 Ayarlar":
     with tab1:
         st.subheader("💾 Veri Yönetimi")
 
+        # ===== YENİ KAPSAMLI YEDEKLEME SİSTEMİ =====
+        st.markdown("### 📦 Kapsamlı Yedekleme Sistemi (v2.3)")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.write("**📥 Tam Yedekleme İndirme:**")
+
+            # Tam yedekleme ZIP oluştur ve indir
+            if st.button("📦 Tam Yedekleme İndir (ZIP)", use_container_width=True, type="primary"):
+                zip_data = create_complete_backup_zip()
+                if zip_data:
+                    backup_filename = f"akademi_yedek_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+                    st.download_button(
+                        label="⬇️ ZIP Dosyasını İndir",
+                        data=zip_data,
+                        file_name=backup_filename,
+                        mime="application/zip"
+                    )
+                    st.success("✅ Tam yedekleme hazır! İndirme butonuna tıklayın.")
+                else:
+                    st.error("❌ Yedekleme oluşturulamadı!")
+
+            st.info("💡 Bu yedekleme tüm kelimelerinizi, puanlarınızı ve istatistik geçmişinizi içerir.")
+
+        with col2:
+            st.write("**📤 Tam Yedekleme Yükleme:**")
+
+            uploaded_zip = st.file_uploader(
+                "ZIP Yedekleme Dosyası Seçin:",
+                type=['zip'],
+                key="upload_full_backup"
+            )
+
+            if uploaded_zip is not None:
+                preserve_progress = st.checkbox(
+                    "✅ Bugünkü ilerlemeyi koru",
+                    value=True,
+                    help="İşaretlenirse bugün eklediğiniz kelimeler ve çözdüğünüz testler korunur"
+                )
+
+                if st.button("📥 Tam Yedeklemeyi Yükle", type="primary"):
+                    try:
+                        with zipfile.ZipFile(uploaded_zip, 'r') as zip_file:
+                            # ZIP içeriğini kontrol et
+                            file_list = zip_file.namelist()
+
+                            if 'kelimeler.json' not in file_list or 'puan.json' not in file_list:
+                                st.error("❌ Geçersiz yedekleme dosyası! kelimeler.json veya puan.json eksik.")
+                            else:
+                                # Verileri yükle
+                                kelimeler_content = zip_file.read('kelimeler.json').decode('utf-8')
+                                puan_content = zip_file.read('puan.json').decode('utf-8')
+
+                                kelimeler_data = json.loads(kelimeler_content)
+                                score_data_backup = json.loads(puan_content)
+
+                                # Backup bilgilerini göster (varsa)
+                                if 'backup_info.json' in file_list:
+                                    backup_info_content = zip_file.read('backup_info.json').decode('utf-8')
+                                    backup_info = json.loads(backup_info_content)
+
+                                    st.info(f"""
+                                    📋 **Yedekleme Bilgileri:**
+                                    - Yedekleme Tarihi: {backup_info.get('backup_date', 'Bilinmiyor')}
+                                    - Uygulama Sürümü: {backup_info.get('app_version', 'Bilinmiyor')}  
+                                    - Kelime Sayısı: {backup_info.get('total_words', 'Bilinmiyor')}
+                                    - Toplam Puan: {backup_info.get('total_score', 'Bilinmiyor')}
+                                    """)
+
+                                # Geri yükleme işlemi
+                                success, message = restore_from_complete_backup(
+                                    kelimeler_data,
+                                    score_data_backup,
+                                    preserve_progress
+                                )
+
+                                if success:
+                                    st.success(f"🎉 {message}")
+                                    st.info("🔄 Sayfa yenilenecek...")
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {message}")
+
+                    except zipfile.BadZipFile:
+                        st.error("❌ Geçersiz ZIP dosyası!")
+                    except json.JSONDecodeError as e:
+                        st.error(f"❌ JSON okuma hatası: {e}")
+                    except Exception as e:
+                        st.error(f"❌ Beklenmeyen hata: {e}")
+
+        st.divider()
+
+        # ===== ESKI SİSTEM (GERİYE DÖNÜK UYUMLULUK) =====
+        st.markdown("### 📁 Ayrı Dosya İşlemleri")
+
         col1, col2 = st.columns(2)
 
         with col1:
@@ -1099,32 +1372,47 @@ elif menu == "🔧 Ayarlar":
         col1, col2 = st.columns(2)
 
         with col1:
-            st.write("**📥 Veri İçe Aktarma:**")
+            st.write("**📥 Eski Veri İçe Aktarma:**")
             uploaded_kelimeler = st.file_uploader("Kelimeler JSON", type=['json'], key="upload_kelimeler")
             uploaded_puan = st.file_uploader("Puan JSON", type=['json'], key="upload_puan")
 
             if st.button("📥 İçe Aktar", type="primary"):
                 try:
+                    success_messages = []
+
                     if uploaded_kelimeler:
                         kelimeler_data = json.loads(uploaded_kelimeler.read())
-                        kelimeler.clear()
-                        kelimeler.extend(kelimeler_data)
-                        st.success("✅ Kelimeler içe aktarıldı!")
+                        # Veri doğrulama
+                        errors, warnings = validate_backup_data(kelimeler_data, score_data)
+                        if errors:
+                            st.error(f"❌ Kelimeler verisi hatalı: {'; '.join(errors)}")
+                        else:
+                            kelimeler.clear()
+                            kelimeler.extend(kelimeler_data)
+                            success_messages.append("✅ Kelimeler içe aktarıldı!")
 
                     if uploaded_puan:
                         puan_data = json.loads(uploaded_puan.read())
-                        score_data.update(puan_data)
-                        st.success("✅ Puan verileri içe aktarıldı!")
+                        # Veri doğrulama
+                        errors, warnings = validate_backup_data(kelimeler, puan_data)
+                        if errors:
+                            st.error(f"❌ Puan verisi hatalı: {'; '.join(errors)}")
+                        else:
+                            score_data.clear()
+                            score_data.update(puan_data)
+                            success_messages.append("✅ Puan verileri içe aktarıldı!")
 
-                    if uploaded_kelimeler or uploaded_puan:
+                    if success_messages and (uploaded_kelimeler or uploaded_puan):
                         safe_save_data()
+                        for msg in success_messages:
+                            st.success(msg)
                         st.rerun()
 
                 except Exception as e:
                     st.error(f"❌ İçe aktarma hatası: {e}")
 
         with col2:
-            st.write("**📤 Veri Dışa Aktarma:**")
+            st.write("**📤 Eski Veri Dışa Aktarma:**")
 
             if st.button("📤 Kelimeleri İndir", use_container_width=True):
                 kelimeler_json = json.dumps(kelimeler, ensure_ascii=False, indent=2)
@@ -1167,7 +1455,7 @@ elif menu == "🔧 Ayarlar":
         st.info(
             "• Her gün en az 10 kelime eklenmeli\n• Eksik kelime başına -20 puan cezası\n• Her eklenen kelime +1 puan")
 
-        st.write("**📝 Yeni Test Sistemi (v2.2):**")
+        st.write("**📝 Yeni Test Sistemi (v2.3):**")
         st.info(
             "• EN→TR Testi: 30 soru hedefi (%50 yeni, %30 orta, %20 eski kelime)\n"
             "• TR→EN Testi: 30 soru hedefi (%50 yeni, %30 orta, %20 eski kelime)\n"
@@ -1192,9 +1480,40 @@ elif menu == "🔧 Ayarlar":
             "• 10 yanlış arka arkaya: -10 puan cezası"
         )
 
+        st.write("**💾 Yeni Yedekleme Sistemi (v2.3):**")
+        st.info(
+            "• Tam yedekleme ZIP dosyası ile tüm verilerinizi koruyun\n"
+            "• Kelimeler, puanlar ve istatistik geçmişi tek dosyada\n"
+            "• Akıllı geri yükleme: Günlük ilerlemenizi korur\n"
+            "• Otomatik veri doğrulama ve düzeltme\n"
+            "• Geriye dönük uyumluluk: Eski JSON dosyaları da desteklenir"
+        )
+
     with tab3:
         st.subheader("ℹ️ Uygulama Bilgileri")
 
-        st.write("**🔧 Versiyon:** 2.2 - Yeni Test Sistemi")
+        st.write("**🔧 Versiyon:** 2.3 - Gelişmiş Yedekleme Sistemi")
         st.write("**📅 Son Güncelleme:** Bugün")
-    st.write("**🎯**")
+
+        st.markdown("### ✨ v2.3 Yenilikleri:")
+        st.success("""
+        🆕 **Kapsamlı Yedekleme Sistemi:**
+        • ZIP formatında tam yedekleme
+        • Tüm veriler tek dosyada (kelimeler + istatistikler)  
+        • Akıllı geri yükleme ile günlük ilerleme korunur
+        • Otomatik veri doğrulama ve onarım
+        • Yedekleme tarihi ve bilgiler dahil
+
+        🔧 **İyileştirmeler:**
+        • Günlük kelime hedefleri yedeklemeden etkilenmez
+        • Test ilerlemeleri korunur
+        • Eksik veriler otomatik tamamlanır
+        • Hata durumunda detaylı bilgi
+        """)
+
+        st.write("**🎯 Geliştiriciye Not:**")
+        st.info("Artık tek ZIP dosyası ile tüm verilerinizi güvenle yedekleyebilir ve geri yükleyebilirsiniz!")
+
+# Import time for sleep function
+import time
+import time
