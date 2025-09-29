@@ -1399,8 +1399,7 @@ elif menu == "➕ Kelime Ekle":
 elif menu == "🔧 Ayarlar":
     st.header("🔧 Ayarlar")
 
-   tab1, tab2, tab3, tab4 = st.tabs(["💾 Veri Yönetimi", "🎯 Hedefler", "☁️ Google Sheets", "ℹ️ Bilgi"])
-
+    tab1, tab2, tab3, tab4 = st.tabs(["💾 Veri Yönetimi", "🎯 Hedefler", "☁️ Google Sheets", "ℹ️ Bilgi"])
     with tab1:
         st.subheader("💾 Veri Yönetimi")
 
@@ -1725,4 +1724,5 @@ elif menu == "🔧 Ayarlar":
 
 # Import time for sleep function
 import time
+
 
