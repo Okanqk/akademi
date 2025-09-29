@@ -1399,7 +1399,7 @@ elif menu == "➕ Kelime Ekle":
 elif menu == "🔧 Ayarlar":
     st.header("🔧 Ayarlar")
 
-    tab1, tab2, tab3 = st.tabs(["💾 Veri Yönetimi", "🎯 Hedefler", "ℹ️ Bilgi"])
+   tab1, tab2, tab3, tab4 = st.tabs(["💾 Veri Yönetimi", "🎯 Hedefler", "☁️ Google Sheets", "ℹ️ Bilgi"])
 
     with tab1:
         st.subheader("💾 Veri Yönetimi")
@@ -1668,7 +1668,7 @@ elif menu == "🔧 Ayarlar":
             "• Geriye dönük uyumluluk: Eski JSON dosyaları da desteklenir"
         )
 
-    with tab3:
+    with tab4:
         st.subheader("ℹ️ Uygulama Bilgileri")
 
         st.write("**🔧 Versiyon:** 2.4 - Akıllı Yanlış Kelime Sistemi")
@@ -1686,6 +1686,32 @@ elif menu == "🔧 Ayarlar":
         • EN→TR & TR→EN: %40 bugün, %30 yeni, %20 orta, %10 eski
         • Genel Tekrar: %50 eski, %30 orta, %20 yeni (bugün eklenenler hariç)
         • Daha akıllı kelime seçim algoritması
+        with tab3:
+        st.subheader("☁️ Google Sheets")
+        
+        sheets_url = st.text_input("Google Sheets Linki:", placeholder="https://docs.google.com/spreadsheets/d/...")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("☁️ Sheets'e Kaydet", type="primary"):
+                if sheets_url:
+                    success, msg = save_to_sheets(sheets_url)
+                    if success:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+        
+        with col2:
+            if st.button("☁️ Sheets'ten Yükle", type="primary"):
+                if sheets_url:
+                    success, msg, kdata, sdata = load_from_sheets(sheets_url)
+                    if success:
+                        kelimeler.clear()
+                        kelimeler.extend(kdata)
+                        safe_save_data()
+                        st.success(msg)
+                        st.rerun()
 
         🔧 **İyileştirmeler:**
         • Yanlış kelime takip sistemi
@@ -1699,3 +1725,4 @@ elif menu == "🔧 Ayarlar":
 
 # Import time for sleep function
 import time
+
