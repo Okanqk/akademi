@@ -577,11 +577,10 @@ elif menu == "📊 İstatistikler":
                     else:
                         st.warning("🔄 Başlamamış")
             if st.button("🔄 Yanlış Kelimeleri Tekrar Et", type="primary"):
-                st.session_state.selected_test_type = "yanlis"
-                st.session_state.current_question = None
-                st.rerun()
-        else:
-            st.success("🎉 Hiç yanlış kelime yok! Mükemmel performans!")📝 İlk kez açılıyor, varsayılan veriler yükleniyor...")
+                     st.info("📝 Henüz eklenmiş kelime yok.")
+        
+        if os.path.exists(SCORE_FILE):
+
             kelimeler, _ = initialize_default_data()
         if os.path.exists(SCORE_FILE):
             with open(SCORE_FILE, "r", encoding="utf-8") as f:
@@ -1365,8 +1364,8 @@ elif menu == "➕ Kelime Ekle":
                             st.success("✅ Temiz")
                     st.divider()
         else:
-            st.info("
-                    st.info("📝 Henüz eklenmiş kelime yok.")
+    st.info("📝 Henüz eklenmiş kelime yok.")
+
         
         if os.path.exists(SCORE_FILE):
             with open(SCORE_FILE, "r", encoding="utf-8") as f:
@@ -2485,3 +2484,4 @@ elif menu == "🔧 Ayarlar":
         """)
         st.write("**🎯 Geliştiriciye Not:**")
         st.info("Artık kelimeleriniz hem local JSON dosyalarında hem de Google Sheets'te güvende!")
+
