@@ -1583,7 +1583,7 @@ elif menu == "🔧 Ayarlar":
         """)
 
         st.write("**🎯 Geliştiriciye Not:**")
-        st.info("Artık kelimeleriniz hem local JSON dosyalarında hem de Google Sheets'te güvende!") Sonraki Soru", key="next_question", type="primary", use_container_width=True):
+        st.info("Artık kelimeleriniz hem local JSON dosyalarında hem de Google Sheets'te güvende!")
                     st.session_state.current_question = None
                     st.rerun()
 
