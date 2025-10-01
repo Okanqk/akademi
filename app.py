@@ -1648,6 +1648,75 @@ elif menu == "🔧 Ayarlar":
 # -------------------- İstatistikler --------------------
 
 elif menu == "📊 İstatistikler":
+       # ... (önceki kodlar aynı kalıyor, sadece son bölümdeki hatalı kısım)
+
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if st.button("🔄 Sonraki Soru", key="next_question", type="primary"):
+                    st.session_state.current_question = None
+                    st.rerun()
+
+            with col2:
+                if st.button("🏠 Test Menüsüne Dön", key="back_to_menu", use_container_width=True):
+                    st.session_state.selected_test_type = None
+                    st.session_state.current_question = None
+                    st.rerun()
+
+            with st.expander("✏️ Kelimeyi Düzenle / Sil"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    yeni_en = st.text_input("İngilizce", question_data["soru"]["en"], key="edit_en")
+                    yeni_tr = st.text_input("Türkçe", question_data["soru"]["tr"], key="edit_tr")
+
+                with col2:
+                    if st.button("💾 Kaydet", key="save_edit"):
+                        if yeni_en.strip() and yeni_tr.strip():
+                            question_data["soru"]["en"] = yeni_en.strip()
+                            question_data["soru"]["tr"] = yeni_tr.strip()
+                            safe_save_data()
+                            st.success("✅ Kelime güncellendi!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Boş bırakılamaz!")
+
+                    if st.button("🗑️ Sil", key="delete_word", type="secondary"):
+                        if question_data["soru"]["en"] in score_data.get("wrong_words_list", []):
+                            score_data["wrong_words_list"].remove(question_data["soru"]["en"])
+
+                        kelimeler.remove(question_data["soru"])
+                        safe_save_data()
+                        st.warning("🗑️ Kelime silindi!")
+                        st.session_state.current_question = None
+                        st.session_state.selected_test_type = None
+                        st.rerun()
+    else:
+        st.info("👆 Yukarıdaki butonlardan bir test türü seçin")
+
+        st.subheader("📊 Yeni Test İstatistikleri (v2.4)")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("""
+            **🆕 EN→TR ve 🇹🇷 TR→EN Testleri:**
+            - 📅 Bugün eklenen kelimeler: %40
+            - 🆕 1-6 gün önce eklenen: %30  
+            - 📚 7-29 gün önce eklenen: %20
+            - 📖 30+ gün önce eklenen: %10
+            """)
+
+        with col2:
+            st.markdown("""
+            **🔄 Genel Tekrar:**
+            - 📖 30+ gün önce eklenen: %50
+            - 📚 7-29 gün önce eklenen: %30  
+            - 🆕 1-6 gün önce eklenen: %20
+            - 📅 Bugün eklenen: Dahil değil
+            """)
+
+# -------------------- İstatistikler --------------------
+
+elif menu == "📊 İstatistikler":
     st.header("📊 İstatistikler")
 
     tab1, tab2, tab3 = st.tabs(["📈 Günlük", "📊 Genel", "❌ Yanlış Kelimeler"])
@@ -1694,7 +1763,7 @@ elif menu == "📊 İstatistikler":
 
         with col3:
             if total_dogru + total_yanlis > 0:
-                basari_orani = (total_dogru / (total_dogru + total_yanlis)) * 100
+                basari_orani = (total_dogru / (total_yanlis + total_yanlis)) * 100
                 st.metric("🎯 Genel Başarı", f"{basari_orani:.1f}%")
             else:
                 st.metric("🎯 Genel Başarı", "0%")
@@ -1757,4 +1826,9 @@ elif menu == "📊 İstatistikler":
                     else:
                         st.warning("🔄 Başlamamış")
 
-            if st.button("🔄
+            if st.button("🔄 Yanlış Kelimeleri Tekrar Et", type="primary"):
+                st.session_state.selected_test_type = "yanlis"
+                st.session_state.current_question = None
+                st.rerun()
+        else:
+            st.success("🎉 Hiç yanlış kelime yok! Mükemmel performans!")
