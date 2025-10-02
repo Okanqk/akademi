@@ -238,6 +238,7 @@ def safe_load_data():
         "correct_streak": 0, "wrong_streak": 0, "combo_multiplier": 1.0,
         "en_tr_answered": 0, "tr_en_answered": 0, "tekrar_answered": 0, "wrong_words_list": []
     }
+
     try:
         if os.path.exists(DATA_FILE):
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -245,29 +246,37 @@ def safe_load_data():
                 if not kelimeler:
                     st.warning("⚠️ Kelimeler dosyası boş, varsayılan veriler yükleniyor...")
                     kelimeler, _ = initialize_default_data()
-    except Exception as e:
-     st.error(f"Hata: {e}")
         else:
             st.info("📝 Henüz eklenmiş kelime yok.")
+    except Exception as e:
+        st.error(f"Hata: {e}")
+        kelimeler, score_data = initialize_default_data()
 
-elif menu == "🔧 Ayarlar":
-    st.header("🔧 Ayarlar")
-    tab1, tab2, tab3, tab4 = st.tabs(["💾 Veri Yönetimi", "🎯 Hedefler", "☁️ Google Sheets", "ℹ️ Bilgi"])
-    with tab1:
-        st.subheader("💾 Veri Yönetimi")
-        st.markdown("### 📦 Kapsamlı Yedekleme Sistemi (v2.4)")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**📥 Tam Yedekleme İndirme:**")
-            if st.button("📦 Tam Yedekleme İndir (ZIP)", use_container_width=True, type="primary"):
-                zip_data = create_complete_backup_zip()
-                if zip_data:
-                    backup_filename = f"akademi_yedek_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-                    st.download_button(label="⬇️ ZIP Dosyasını İndir", data=zip_data, file_name=backup_filename, mime="application/zip")
-                    st.success("✅ Tam yedekleme hazır! İndirme butonuna tıklayın.")
-                else:
-                    st.error("❌ Yedekleme oluşturulamadı!")
-            st.info("💡 Bu yedekleme tüm kelimelerinizi, puanlarınızı ve istatistik geçmişinizi içerir.")
+    # Ek güvenlik kontrolleri
+    if not isinstance(kelimeler, list):
+        kelimeler = []
+    if not isinstance(score_data, dict):
+        score_data = initialize_default_data()[1]
+
+    # Eksik anahtarları tamamlama
+    if "en_tr_answered" not in score_data:
+        score_data["en_tr_answered"] = 0
+    if "tr_en_answered" not in score_data:
+        score_data["tr_en_answered"] = 0
+    if "tekrar_answered" not in score_data:
+        score_data["tekrar_answered"] = 0
+    if "wrong_words_list" not in score_data:
+        score_data["wrong_words_list"] = []
+
+    # Her kelimeye eksik alan ekle
+    for kelime in kelimeler:
+        if "wrong_test_count" not in kelime:
+            kelime["wrong_test_count"] = 0
+        if "added_date" not in kelime:
+            kelime["added_date"] = datetime.now().strftime("%Y-%m-%d")
+
+    return kelimeler, score_data
+
         with col2:
             st.write("**📤 Tam Yedekleme Yükleme:**")
             uploaded_zip = st.file_uploader("ZIP Yedekleme Dosyası Seçin:", type=['zip'], key="upload_full_backup")
@@ -2486,5 +2495,6 @@ elif menu == "🔧 Ayarlar":
         """)
         st.write("**🎯 Geliştiriciye Not:**")
         st.info("Artık kelimeleriniz hem local JSON dosyalarında hem de Google Sheets'te güvende!")
+
 
 
