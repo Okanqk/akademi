@@ -277,7 +277,7 @@ def safe_load_data():
 
     return kelimeler, score_data
 
-        with col2:
+    with col2:
             st.write("**📤 Tam Yedekleme Yükleme:**")
             uploaded_zip = st.file_uploader("ZIP Yedekleme Dosyası Seçin:", type=['zip'], key="upload_full_backup")
             if uploaded_zip is not None:
@@ -2495,6 +2495,7 @@ elif menu == "🔧 Ayarlar":
         """)
         st.write("**🎯 Geliştiriciye Not:**")
         st.info("Artık kelimeleriniz hem local JSON dosyalarında hem de Google Sheets'te güvende!")
+
 
 
 
