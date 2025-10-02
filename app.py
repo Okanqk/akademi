@@ -490,7 +490,8 @@ def generate_question(test_type):
 
 
 # -------------------- Google Sheets Fonksiyonları --------------------
-
+import os
+st.write("Çalışma dizini:", os.getcwd())
 def init_google_sheets():
     """Google Sheets bağlantısını başlat"""
     if not SHEETS_AVAILABLE:
@@ -1708,3 +1709,4 @@ elif menu == "🔧 Ayarlar":
         """)
         st.write("**🎯 Geliştiriciye Not:**")
         st.info("Artık kelimeleriniz hem local JSON dosyalarında hem de Google Sheets'te güvende!")
+
