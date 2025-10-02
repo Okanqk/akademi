@@ -245,6 +245,8 @@ def safe_load_data():
                 if not kelimeler:
                     st.warning("⚠️ Kelimeler dosyası boş, varsayılan veriler yükleniyor...")
                     kelimeler, _ = initialize_default_data()
+    except Exception as e:
+     st.error(f"Hata: {e}")
         else:
             st.info("📝 Henüz eklenmiş kelime yok.")
 
@@ -2484,4 +2486,5 @@ elif menu == "🔧 Ayarlar":
         """)
         st.write("**🎯 Geliştiriciye Not:**")
         st.info("Artık kelimeleriniz hem local JSON dosyalarında hem de Google Sheets'te güvende!")
+
 
