@@ -318,7 +318,7 @@ def safe_load_data():
                         st.error(f"❌ JSON okuma hatası: {e}")
                     except Exception as e:
                         st.error(f"❌ Beklenmeyen hata: {e}")
-        st.divider()
+     st.divider()
         st.markdown("### 📁 Ayrı Dosya İşlemleri")
         col1, col2 = st.columns(2)
         with col1:
@@ -2495,6 +2495,7 @@ elif menu == "🔧 Ayarlar":
         """)
         st.write("**🎯 Geliştiriciye Not:**")
         st.info("Artık kelimeleriniz hem local JSON dosyalarında hem de Google Sheets'te güvende!")
+
 
 
 
